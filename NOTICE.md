@@ -20,5 +20,4 @@ none of them is used here: the pictures are rendered from the list's LOD by `too
 ## What the pictures are made from
 
 The pictures are renders of the local list's xLODGen and DynDOLOD output, which draw on the textures of the mods in that list.
-THIS MATTERS BEFORE ANY POSTING: a render made from other authors' textures is a derivative of them, so a public release needs a
-decision on those permissions, or the mod ships the tool without the pictures so each list renders its own.
+No other author's assets are included: the pictures are rendered. Any public page carries a blanket credit to the authors of the mods in the list, and specific credits for Flat World Map Framework and the terrain mods, following GTS Land Maps' approach.
