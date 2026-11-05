@@ -51,18 +51,6 @@ def apply(img, rect, ppc, cfg):
     fill = ground[None, None, :] * (1.0 + cfg.get("mottle", 0.05) * n)
     k = keep[..., None]
     out = np.clip(img.astype(np.float32) * k + fill * (1 - k), 0, 255).astype(np.uint8)
-    # smooth_colour: a colour's edge (a painted road) is rounded where it stair-steps; the colour stays where it is, give or take a pixel or two
-    for r, g, b, tol in cfg.get("smooth_colour", []):
-        m = (np.abs(out.astype(np.float32) - np.array([r, g, b], np.float32)).max(2) < tol).astype(np.uint8) * 255
-        rad = max(2.0, ppc / 45.0)
-        soft = np.asarray(Image.fromarray(m).filter(ImageFilter.GaussianBlur(rad)), dtype=np.float32) / 255.0
-        new = np.clip((soft - 0.35) / 0.3, 0, 1)
-        new = new * new * (3 - 2 * new)
-        rest = np.asarray(Image.fromarray(out).filter(ImageFilter.GaussianBlur(rad * 1.5)), dtype=np.float32)
-        band = ((soft > 0.03) & (soft < 0.97))[..., None]
-        road = np.array([r, g, b], np.float32)[None, None, :]
-        mixed = road * new[..., None] + rest * (1 - new[..., None])
-        out = np.where(band, mixed, out.astype(np.float32)).astype(np.uint8)
     # heal: rectangles x0 y0 x1 y1 in cells whose drawn outline is taken out, each side copied over from just beside it
     for x0, y0, x1, y1 in cfg.get("heal", []):
         px0, px1 = int((x0 - rect[0]) * ppc), int((x1 - rect[0]) * ppc)
