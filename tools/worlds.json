@@ -90,7 +90,7 @@
         "onamz": 184072.96875,
         "road_extra": "WinterForestDirt|FallForestDirt",
         "placed": "all",
-        "direct": true
+        "land_soft": 0.8
     },
     "DLC01SoulCairn": {
         "name": "Soul Cairn",
@@ -126,7 +126,7 @@
         "onamz": 184072.96875,
         "sea": true,
         "placed": "all",
-        "direct": true
+        "land_soft": 0.8
     },
     "ECSSShiveringIsles": {
         "name": "Shivering Isles",
@@ -183,7 +183,7 @@
         ],
         "onamz": 192264.953125,
         "placed": "all",
-        "direct": true
+        "land_soft": 0.8
     },
     "DLC2ApocryphaWorld": {
         "name": "Apocrypha",
@@ -218,7 +218,6 @@
         ],
         "onamz": 184072.96875,
         "placed": "all",
-        "direct": true,
         "hide": [
             [
                 40.0,
@@ -238,7 +237,8 @@
                 62,
                 -3.9
             ]
-        ]
+        ],
+        "land_soft": 0.8
     },
     "BSKHyorkerIsle": {
         "name": "Hjorkvild Isles",
@@ -250,6 +250,6 @@
         "onamz": 184072.96875,
         "sea": true,
         "placed": "all",
-        "direct": true
+        "land_soft": 0.8
     }
 }

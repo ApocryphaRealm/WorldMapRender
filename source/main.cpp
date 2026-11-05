@@ -240,6 +240,22 @@ namespace
 		bool  tintSet = false;
 	} g;
 
+	// The player's own field of view. Other plugins handle the map's open event too (FWMF's BakaWorldMapFOV raises it to 110
+	// and puts it back on close), and may run first, so what we read at the map's open is not trustworthy. It is sampled at
+	// every other menu event while the map is shut, at data loaded, and on each game load.
+	float g_realWorldFOV = 0.0f;
+	float g_realFirstFOV = 0.0f;
+
+	void SampleRealFOV()
+	{
+		if (g.open) { return; }
+		auto player = RE::PlayerCamera::GetSingleton();
+		if (!player) { return; }
+		auto& fov = player->GetRuntimeData2();
+		if (fov.worldFOV > 0.0f) { g_realWorldFOV = fov.worldFOV; }
+		if (fov.firstPersonFOV > 0.0f) { g_realFirstFOV = fov.firstPersonFOV; }
+	}
+
 	std::vector<RE::TESWorldSpace*> g_raised;  // lands whose limit has been lifted since the map opened: once each, so it can't creep
 
 	// Worlds with no sky (Blackreach) don't get the map's fog-free weather, so their own fog can swallow a sheet this far away.
@@ -418,7 +434,12 @@ namespace
 	public:
 		RE::BSEventNotifyControl ProcessEvent(const RE::MenuOpenCloseEvent* a_event, RE::BSTEventSource<RE::MenuOpenCloseEvent>*) override
 		{
-			if (!a_event || a_event->menuName != RE::MapMenu::MENU_NAME) { return RE::BSEventNotifyControl::kContinue; }
+			if (!a_event) { return RE::BSEventNotifyControl::kContinue; }
+			if (a_event->menuName != RE::MapMenu::MENU_NAME)
+			{
+				SampleRealFOV();
+				return RE::BSEventNotifyControl::kContinue;
+			}
 			auto player = RE::PlayerCamera::GetSingleton();
 			if (!player) { return RE::BSEventNotifyControl::kContinue; }
 			auto& fov = player->GetRuntimeData2();
@@ -433,9 +454,9 @@ namespace
 				g_raised.clear();
 				g_sheetZ = 0.0f;
 				g_sheet = nullptr;
-				g.savedWorld = fov.worldFOV;
-				g.savedFirst = fov.firstPersonFOV;
-				logger::info("Map opened, FOV was {} {}", g.savedWorld, g.savedFirst);
+				g.savedWorld = g_realWorldFOV > 0.0f ? g_realWorldFOV : fov.worldFOV;
+				g.savedFirst = g_realFirstFOV > 0.0f ? g_realFirstFOV : fov.firstPersonFOV;
+				logger::info("Map opened, FOV now {} {}, the player's own {} {}", fov.worldFOV, fov.firstPersonFOV, g.savedWorld, g.savedFirst);
 			}
 			else if (!a_event->opening && g.open)
 			{
@@ -449,6 +470,8 @@ namespace
 				}
 				fov.worldFOV = g.savedWorld;
 				fov.firstPersonFOV = g.savedFirst;
+				g_realWorldFOV = g.savedWorld;
+				g_realFirstFOV = g.savedFirst;
 				logger::info("Map closed, FOV back to {} {}", g.savedWorld, g.savedFirst);
 			}
 			return RE::BSEventNotifyControl::kContinue;
@@ -465,6 +488,7 @@ namespace
 			LoadTable(true);
 			ApplyRecords(true);
 			if (!g_worlds.empty()) { SetMapTint(false); }
+			SampleRealFOV();
 			static MenuSink sink;
 			if (auto ui = RE::UI::GetSingleton()) { ui->AddEventSink<RE::MenuOpenCloseEvent>(&sink); }
 			else { logger::error("no UI singleton at data loaded; the map camera will not run"); }
