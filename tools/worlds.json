@@ -222,7 +222,7 @@
                 -2048.0
             ]
         ],
-        "void_below": -2048.0
+        "keep": true
     },
     "DLC2ApocryphaWorld": {
         "name": "Apocrypha",
