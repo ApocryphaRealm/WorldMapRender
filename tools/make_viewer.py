@@ -15,7 +15,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 folder = sys.argv[1]
 tdir = os.path.join(folder, "textures", "terrain", "worldmaprender")
 maps = {}
-if os.path.isdir(tdir):
+if os.path.isfile(os.path.join(folder, "groups.json")):
+    # the same pictures finished in different ways: the zoom and the spot stay put when the picture changes
+    out = os.path.join(folder, "maps-viewer.html")
+    maps = {m["num"]: m for m in json.load(open(os.path.join(folder, "groups.json"), encoding="utf-8"))["maps"]}
+elif os.path.isdir(tdir):
     root = sys.argv[2] if len(sys.argv) > 2 else folder
     out = os.path.join(root, "maps-viewer.html")
     os.makedirs(os.path.join(root, "full"), exist_ok=True)

@@ -314,7 +314,15 @@ def build_world(edid, cfg, out, ppc, tc, preview):
     # Right angles outside buildings are healed, and whatever is left stops the land here, before a picture is written (no sweep_note, no picture).
     day, _ = right_angles.clean(day, edid, rect, use, cfg.get("edge_cells", 1.5))
     night, _ = right_angles.clean(night, edid, rect, use, cfg.get("edge_cells", 1.5))
-    swept = right_angles.gate(day, night, edid, cfg, rect, use)
+    try:
+        swept = right_angles.gate(day, night, edid, cfg, rect, use)
+    except SystemExit:
+        # kept to look at; the land's staged picture stays what it was
+        rej = os.path.join(out, "..", "rejected")
+        os.makedirs(rej, exist_ok=True)
+        Image.fromarray(day).save(os.path.join(rej, edid.lower() + "-day.png"))
+        Image.fromarray(night).save(os.path.join(rej, edid.lower() + "-night.png"))
+        raise
     edge = use * cfg.get("edge_cells", 1.5)
     day = fade_edges(day.copy(), edge, EDGE_DAY)
     night = fade_edges(night.copy(), edge, EDGE_NIGHT)
@@ -390,9 +398,10 @@ def main():
             report[edid] = build_world(edid, cfg[edid], args.out, args.ppc, tc, args.preview)
         except (Exception, SystemExit) as e:
             # one land's failure must not cost the others; it stays on its old map, and the report says why
-            report[edid] = {"failed": str(e)[:300]}
+            report[edid] = dict(report.get(edid, {}), failed=str(e)[:300])
             print("FAILED", edid, e, flush=True)
             continue
+        report[edid].pop("failed", None)
         print(json.dumps(report[edid])[:700], flush=True)
         if args.tiles and cfg[edid].get("tile_ppc"):
             write_slot_files(tdir, tc)

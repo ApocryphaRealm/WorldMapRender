@@ -29,7 +29,7 @@ def structures(world, rect, ppc):
         name = rel.split("|")[0]
         if NOT_BUILT.search(name):
             continue
-        r = (1400.0 if BIG.search(name) else 500.0) / CELL * ppc / s
+        r = (1800.0 if BIG.search(name) else 800.0) / CELL * ppc / s
         for ref in refs:
             x, y = (ref[0] / CELL - rect[0]) * ppc / s, (rect[3] - ref[1] / CELL) * ppc / s
             d.ellipse([x - r, y - r, x + r, y + r], fill=255)
@@ -83,10 +83,10 @@ def classify(runs, mask, s):
     return real, odd
 
 
-def heal(img, runs, ppc):
+def heal(img, runs, ppc, grow=1):
     """Take the hardness out of defects: a soft blur across each run, fading away from the line and at its ends. Nothing moves."""
     out = img.copy()
-    t = max(4, int(ppc / 20))
+    t = max(4, int(ppc / 20)) * grow
     H, W = out.shape[:2]
     for ax, i, a, b in runs:
         y0, y1 = (max(0, i - 2 * t), min(H, i + 2 * t)) if ax == 0 else (max(0, a - t), min(H, b + t))
@@ -114,14 +114,14 @@ def sweep(rgb, world, rect, ppc, edge_cells=1.5, mask=None):
     return dict(real=real, odd=odd, stairs=stairs(rgb, mask, s), mask=(mask, s))
 
 
-def clean(img, world, rect, ppc, edge_cells=1.5, rounds=4):
+def clean(img, world, rect, ppc, edge_cells=1.5, rounds=6):
     """Heal what isn't a building until nothing is left or it stops helping."""
     mk = structures(world, rect, ppc)
-    for _ in range(rounds):
+    for n in range(rounds):
         r = sweep(img, world, rect, ppc, edge_cells, mk)
         if not r["odd"]:
             break
-        img = heal(img, r["odd"], ppc)
+        img = heal(img, r["odd"], ppc, 1 + n // 2)   # what survives gets a wider touch
     return img, mk
 
 

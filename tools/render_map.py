@@ -345,6 +345,7 @@ uniform sampler2D diffuse;
 uniform int alphatest;
 uniform sampler2D heights;
 uniform float upp;      // world units a pixel
+uniform float facetSoft;
 uniform float ceilingGap;  // a cave land's roof: anything this far above the floor is left out, so the map shows the cave
 uniform float snowLo;
 uniform float snowHi;
@@ -357,6 +358,8 @@ void main() {
     if (alphatest == 1 && t.a < 0.45) discard;
     vec3 n = normalize(cross(dFdx(vW), dFdy(vW)));
     if (n.z < 0.0) n = -n;
+    // Each triangle is lit flat, so a low-detail model shows its facets: this leans them all toward straight up, by this share.
+    n = normalize(mix(n, vec3(0.0, 0.0, 1.0), facetSoft));
     if (ceilingGap > 0.0) {
         float floorZ = texelFetch(heights, ivec2(gl_FragCoord.xy), 0).r;
         if (floorZ > -1.0e6 && vW.z - floorZ > ceilingGap) discard;
@@ -792,12 +795,20 @@ class Scene:
         self.land["voidBelow"].value = world.void_below if world.void_below is not None else -2.0e6
         self.obj["ceilingGap"].value = world.ceiling
         self.inst["ceilingGap"].value = world.ceiling
+        self.obj["facetSoft"].value = world.facet_soft
+        self.inst["facetSoft"].value = world.facet_soft
         self.inst["soften"].value = 0.0   # what the references place is real geometry, not coarse LOD
         # roads
         self.road_stats = None
         if world.roads:
             try:
                 img, self.road_stats = roads_mod.build(world.id, tuple(int(v) for v in rect_cells), (lambda f: np.array(world.road_paint, "f4")) if world.road_paint else mean_colour_lookup(self.tex_for_roads()), world.road_extra)
+                for _ in range(world.road_soft):
+                    # the land's paint comes one point every 128 units; left alone a diagonal road stair-steps at that size
+                    f = img.astype("f4")
+                    for axis in (0, 1):
+                        f = (np.roll(f, 1, axis) + 2 * f + np.roll(f, -1, axis)) / 4
+                    img = f.astype(np.uint8)
                 self.road_tex = c.texture((img.shape[1], img.shape[0]), 4, img[::-1].tobytes())
                 self.land["roadsOn"].value = 1.0
                 self.landimg["roadsOn"].value = 1.0
@@ -1415,18 +1426,20 @@ def soften_coast(hh, passes=6):
 
 def world_from_config(edid, c):
     """One land's settings from worlds.json."""
-    kw = {k: c[k] for k in ("winter", "surround", "soften", "roads", "road_extra", "land_soft", "land_colour", "hide", "ceiling", "true_coast", "terrain_lines", "all_water", "relief", "flatten", "void_below", "alt_textures", "road_meshes", "road_colour", "road_paint", "direct", "placed", "ambient", "tone", "water", "water_style") if k in c}
+    kw = {k: c[k] for k in ("winter", "surround", "soften", "roads", "road_extra", "land_soft", "land_colour", "road_soft", "facet_soft", "hide", "ceiling", "true_coast", "terrain_lines", "all_water", "relief", "flatten", "void_below", "alt_textures", "road_meshes", "road_colour", "road_paint", "direct", "placed", "ambient", "tone", "water", "water_style") if k in c}
     return World(edid, **kw)
 
 
 class World:
-    def __init__(self, editor_id, dyn=None, folder=None, winter=True, surround=False, soften=0.0, roads=True, road_extra=None, land_soft=0.0, land_colour=(0.0, 0.0, 0.0), hide=(), ceiling=0.0, true_coast=True, terrain_lines=False, all_water=False, relief=1.0, flatten=(), void_below=None, alt_textures=False, road_meshes=False, road_colour=(0.40, 0.38, 0.36), road_paint=None,
+    def __init__(self, editor_id, dyn=None, folder=None, winter=True, surround=False, soften=0.0, roads=True, road_extra=None, land_soft=0.0, land_colour=(0.0, 0.0, 0.0), road_soft=0, facet_soft=0.0, hide=(), ceiling=0.0, true_coast=True, terrain_lines=False, all_water=False, relief=1.0, flatten=(), void_below=None, alt_textures=False, road_meshes=False, road_colour=(0.40, 0.38, 0.36), road_paint=None,
                  water=((0.33, 0.44, 0.52), (0.23, 0.33, 0.42), (0.055, 0.085, 0.14), (0.03, 0.05, 0.09)), water_style=0,
                  direct=False, placed=False, ambient=(0.56, 0.62, 0.74), tone=(1.0, 1.0, 1.0)):
         self.water = tuple(tuple(c) for c in water)
         self.water_style = water_style
         self.land_soft = land_soft
         self.land_colour = tuple(land_colour)
+        self.road_soft = road_soft
+        self.facet_soft = facet_soft
         self.true_coast = true_coast
         self.terrain_lines = terrain_lines
         self.all_water = all_water
