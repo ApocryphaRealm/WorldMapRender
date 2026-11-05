@@ -76,6 +76,13 @@ namespace
 		float keys = 0.00714f;      // keyboard speed, as a share of the view's width
 	} g_tuning;
 
+	// Test switches: a table line "! noswap noclamp ..." turns those parts off. The table is read at every map open, and a copy in
+	// the log folder wins, so a part can be switched between two map opens with no relaunch. Own-map is read at data load only.
+	struct Off
+	{
+		bool swap = false, clamp = false, ownMap = false, stick = false, look = false, fov = false, tiles = false, frame = false;
+	} g_off;
+
 	// A copy in the log folder wins over the installed one and is read every time the map opens: changes need no restart.
 	std::ifstream OpenTable()
 	{
@@ -91,6 +98,7 @@ namespace
 	{
 		g_worlds.clear();
 		g_tuning = Tuning{};
+		g_off = Off{};
 		auto        in = OpenTable();
 		std::string line;
 		while (std::getline(in, line))
@@ -98,6 +106,24 @@ namespace
 			if (line.empty() || line[0] == '#') { continue; }
 			std::istringstream s(line);
 			std::string        name;
+			if (line[0] == '!')
+			{
+				std::string word;
+				s >> word;
+				while (s >> word)
+				{
+					if (word == "noswap") { g_off.swap = true; }
+					else if (word == "noclamp") { g_off.clamp = true; }
+					else if (word == "noownmap") { g_off.ownMap = true; }
+					else if (word == "nostick") { g_off.stick = true; }
+					else if (word == "nolook") { g_off.look = true; }
+					else if (word == "nofov") { g_off.fov = true; }
+					else if (word == "notiles") { g_off.tiles = true; }
+					else if (word == "noframe") { g_off.frame = true; }
+				}
+				logger::info("Test switches: {}", line);
+				continue;
+			}
 			if (line[0] == '@')
 			{
 				s >> name >> g_tuning.closest >> g_tuning.panNear >> g_tuning.panRange >> g_tuning.keys;
@@ -160,7 +186,7 @@ namespace
 			auto& m = form->worldMapData;
 			auto& o = form->worldMapOffsetData;
 			// A land with a picture of its own is its own map, whatever the winning record says. Only the map flag goes: its land, LOD and water still come from its parent.
-			if (form->parentWorld && form->parentUseFlags.any(RE::TESWorldSpace::ParentUseFlag::kUseMapData))
+			if (!g_off.ownMap && form->parentWorld && form->parentUseFlags.any(RE::TESWorldSpace::ParentUseFlag::kUseMapData))
 			{
 				form->parentUseFlags.reset(RE::TESWorldSpace::ParentUseFlag::kUseMapData);
 				if (a_log) { logger::info("{} now uses its own map, not {}", form->editorID.c_str(), form->parentWorld->editorID.c_str()); }
@@ -218,6 +244,15 @@ namespace
 		if (!material || !material->sourceTexturePath.c_str()) { return 0; }
 		std::string path = material->sourceTexturePath.c_str();
 		if (Lower(path).find(kSheetKey) == std::string::npos) { return 0; }
+		if (g_off.swap)
+		{
+			if (a_object->name.c_str() && std::strcmp(a_object->name.c_str(), "map sheet") == 0)
+			{
+				g_sheetZ = a_object->world.translate.z;
+				g_sheet = a_object;
+			}
+			return 1;
+		}
 		// Every shape of ours has its picture set, as d34d519 did, but only the sheet itself gives the height and takes the night picture.
 		const bool isSheet = a_object->name.c_str() && std::strcmp(a_object->name.c_str(), "map sheet") == 0;
 		if (isSheet)
@@ -339,9 +374,9 @@ namespace
 		}
 		mapstate::g.world = data.worldSpace ? data.worldSpace->editorID.c_str() : "";
 		mapstate::g.ours = world != nullptr;
-		if (!world || !root || !player || !g.open) { return; }
+		if (!world || !root || !player || !g.open || g_off.frame) { return; }
 		++g.frame;
-		HoldLook();
+		if (!g_off.look) { HoldLook(); }
 
 		// Real distance to the sheet once it's found. Record height and camera height may differ by the land's map offset.
 		auto        camera = RE::Main::WorldRootCamera();
@@ -377,7 +412,7 @@ namespace
 		const float fov = 2.0f * std::atan(half) * 57.29578f;
 
 		// Keep the whole screen on the sheet, so the view never leaves the map.
-		if (world->sheet[1] > world->sheet[0])
+		if (!g_off.clamp && world->sheet[1] > world->sheet[0])
 		{
 			const float cx = (world->sheet[0] + world->sheet[1]) / 2.0f, cy = (world->sheet[2] + world->sheet[3]) / 2.0f;
 			const auto  fit = [&](RE::NiPoint3& a_p) {
@@ -413,13 +448,13 @@ namespace
 				fit(flight->zoomOrigin);
 			}
 		}
-		if (settled && world->sheet[1] > world->sheet[0])
+		if (!g_off.clamp && settled && world->sheet[1] > world->sheet[0])
 		{
 			const auto& fr = camera ? camera->GetRuntimeData2().viewFrustum : RE::NiFrustum{};
 			const float aspect = fr.fRight != 0.0f ? fr.fTop / fr.fRight : 0.5625f;
 			auto&       offset = settled->currentPositionScrollOffset;
 			auto&       base = settled->currentPosition;
-			if (std::fabs(g_stickX) > 0.15f || std::fabs(g_stickY) > 0.15f)
+			if (!g_off.stick && (std::fabs(g_stickX) > 0.15f || std::fabs(g_stickY) > 0.15f))
 			{
 				const float step = 0.7f * width * std::clamp(a_interval, 0.0f, 0.05f);
 				base.x += g_stickX * step;
@@ -435,11 +470,14 @@ namespace
 			offset.y = inside(base.y + offset.y, world->sheet[2], world->sheet[3], width / 2.0f * aspect) - base.y;
 		}
 
-		player->GetRuntimeData2().worldFOV = fov;
-		player->GetRuntimeData2().firstPersonFOV = fov;
+		if (!g_off.fov)
+		{
+			player->GetRuntimeData2().worldFOV = fov;
+			player->GetRuntimeData2().firstPersonFOV = fov;
+		}
 
 		// The game normally follows worldFOV by itself. If it doesn't, set the view directly.
-		if (camera)
+		if (camera && !g_off.fov)
 		{
 			auto& fr = camera->GetRuntimeData2().viewFrustum;
 			g.mismatch = std::fabs(fr.fRight - half) > half * 0.05f ? g.mismatch + 1 : 0;
@@ -467,7 +505,7 @@ namespace
 		SetSetting(maxPan, "fMapWorldMaxPanSpeed:MapMenu", pan);
 		SetSetting(keys, "fMapMoveKeyboardSpeed:MapMenu", g_tuning.keys * width / pan);
 
-		if (camera && g_sheet && settled)
+		if (camera && g_sheet && settled && !g_off.tiles)
 		{
 			const auto& tf = camera->GetRuntimeData2().viewFrustum;
 			Tiles::Frame(camera->world.translate, width, tf.fRight != 0.0f ? tf.fTop / tf.fRight : 0.5625f, d);
@@ -501,7 +539,7 @@ namespace
 			if (found || g.frame > 600)
 			{
 				g.sheetsDone = true;
-				if (found) { Tiles::Open(Lower(data.worldSpace->editorID.c_str()), g_sheet, night); }
+				if (found && !g_off.tiles) { Tiles::Open(Lower(data.worldSpace->editorID.c_str()), g_sheet, night); }
 				mapstate::g.night = night;
 				mapstate::g.sheets = found;
 				logger::info("Hour {} night {} sheets {} frame {} sheet z {} camera z {}", hour, night, found, g.frame, g_sheetZ, camZ);
