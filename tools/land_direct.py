@@ -60,7 +60,7 @@ def child_worlds(world):
                     for t, s in M.subs(body):
                         if t == b"EDID":
                             names[form(fid)] = s[:-1].decode("latin1")
-                        elif t == b"WNAM" and len(s) == 4:
+                        elif t == b"WNAM" and len(s) == 4 and M.uses_parent_map(body):
                             parents[form(fid)] = form(struct.unpack_from("<I", s)[0])
                     q += 24 + sz
             p += gs
@@ -186,7 +186,7 @@ def placed_models(world):
                         for t, s in M.subs(body):
                             if t == b"EDID":
                                 names[form(fid)] = s[:-1].decode("latin1").lower()
-                            elif t == b"WNAM" and len(s) == 4:
+                            elif t == b"WNAM" and len(s) == 4 and M.uses_parent_map(body):
                                 parents[form(fid)] = form(struct.unpack_from("<I", s)[0])
                     else:
                         b, pos, scale = None, None, 1.0
@@ -232,7 +232,7 @@ def placed_models(world):
     out = {}
     for b, pos, scale in refs.values():
         info = bases.get(b)
-        if not info or info[1] * scale < MIN_SIZE or SKIP_MODEL.search(info[0]):
+        if not info or info[1] * scale < MIN_SIZE or SKIP_MODEL.search(info[0]) or "ceiling" in info[0].lower():
             continue
         out.setdefault(info[0].lower().replace("/", "\\"), []).append((*pos, scale))
     return out

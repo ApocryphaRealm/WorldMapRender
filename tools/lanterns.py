@@ -89,7 +89,7 @@ def read_plugin(path, target, known, placed):
                     for t, s in M.subs(body):
                         if t == b"EDID":
                             names[form(fid)] = s[:-1].decode("latin1").lower()
-                        elif t == b"WNAM" and len(s) == 4:
+                        elif t == b"WNAM" and len(s) == 4 and M.uses_parent_map(body):
                             parents[form(fid)] = names.get(form(struct.unpack_from("<I", s)[0]))
                 else:
                     base, pos = None, None

@@ -6,6 +6,7 @@ Writes [{"x", "y", "z", "type", "name", "form"}]. Type is the marker's TNAM valu
 """
 import json
 import os
+import re
 import struct
 import sys
 import time
@@ -95,6 +96,25 @@ def read_plugin(path, target_lower):
     return out
 
 
+# Markarth's world takes no land from its parent but stands in Tamriel's coordinates: its bounds hold Markarth's own marker.
+ALSO_IN_PARENT = {"markarthworld"}
+NOT_A_PLACE = re.compile(r"dummy|test", re.I)
+
+
+def uses_parent_map(body):
+    """A child world is in its parent's coordinates if it takes its parent's land (PNAM Use Land Data): the walled cities. Use Map
+    Data alone proves nothing: Blackreach, Sovngarde and Dimfrost carry it and are elsewhere altogether."""
+    ed, fl = "", 0
+    for t, s in subs(body):
+        if t == b"EDID":
+            ed = s[:-1].decode("latin1")
+        elif t == b"PNAM" and len(s) >= 2:
+            fl = struct.unpack_from("<H", s)[0]
+    if NOT_A_PLACE.search(ed):
+        return False
+    return bool(fl & 0x01) or ed.lower() in ALSO_IN_PARENT
+
+
 parents = {}
 water_levels = {}  # world's editor ID, lower case: its default water height; the last plugin wins
 
@@ -130,7 +150,7 @@ def walk(d, p, end, form, cur, names, out, target):
                     names[form(fid)] = s.rstrip(b"\0").decode("latin1").lower()
                 elif t == b"DNAM" and len(s) >= 8 and form(fid) in names:
                     water_levels[names[form(fid)]] = struct.unpack_from("<f", s, 4)[0]
-                elif t == b"WNAM" and len(s) == 4:
+                elif t == b"WNAM" and len(s) == 4 and (target == "tamriel" or uses_parent_map(body)):
                     # a walled city's own worldspace: its markers stand on the parent's map, in the parent's coordinates
                     parents[form(fid)] = names.get(form(struct.unpack_from("<I", s)[0]))
         elif rt == b"REFR" and cur is not None:

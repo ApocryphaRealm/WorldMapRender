@@ -251,6 +251,8 @@ uniform vec3 farDay;
 uniform vec3 shallowNight;
 uniform vec3 farNight;
 uniform int waterStyle;
+uniform int useTrue;
+uniform sampler2D trueHeight;
 uniform vec4 worldRect;
 uniform vec2 canvas;
 out vec4 f;
@@ -288,11 +290,18 @@ void main() {
     float h1 = (texelFetch(heights, at + ivec2(q, 0), 0).r + texelFetch(heights, at - ivec2(q, 0), 0).r + texelFetch(heights, at + ivec2(0, q), 0).r + texelFetch(heights, at - ivec2(0, q), 0).r) * 0.25;
     float h2 = (texelFetch(heights, at + ivec2(q, q), 0).r + texelFetch(heights, at - ivec2(q, q), 0).r + texelFetch(heights, at + ivec2(q, -q), 0).r + texelFetch(heights, at + ivec2(-q, q), 0).r) * 0.25;
     float d = level - (min(h0, min(h1, h2)) < -1.0e6 ? h0 : h0 * 0.3 + h1 * 0.4 + h2 * 0.3);
-    if (d <= 0.0) discard;
+    float drawAt = level;
+    if (useTrue == 1) {
+        // The land's own records decide the coast. The LOD's sea bed wanders around the water line in cells with little or no
+        // land data, in fans of triangles, and those were the geometric shapes in the sea.
+        d = level - texture(trueHeight, gl_FragCoord.xy / canvas).r;
+        if (d <= 0.0) discard;
+        drawAt = max(level, h0 + 1.0);
+    } else if (d <= 0.0) discard;
     // A grown square only finishes a shore: ground far below its level is a valley beside the lake, not more lake.
-    if (l.g > 0.25 && l.g < 0.75 && d > 50.0 && h0 > -1.0e6) discard;
+    if (l.g > 0.25 && l.g < 0.75 && d > 50.0 && h0 > -1.0e6 && abs(level - sea) > 1.0) discard;
     // Thin on purpose: the sea bed's LOD drops sharply at cells with no land data, and a wide shading would draw them as squares.
-    float deep = smoothstep(0.0, 130.0, d);
+    float deep = smoothstep(0.0, 45.0, d);
     vec3 shallow = night == 1 ? shallowNight : shallowDay;
     vec3 far = night == 1 ? farNight : farDay;
     if (waterStyle == 1) {
@@ -313,8 +322,8 @@ void main() {
         c = mix(c, pale, ice);
         a = mix(a, 1.0, ice);
     }
-    f = vec4(c, a);
-    gl_FragDepth = 0.5 * (1.0 - 2.0 * (level - (%f)) / (%f)) + 0.5;
+    f = vec4(c, 1.0);
+    gl_FragDepth = 0.5 * (1.0 - 2.0 * (drawAt - (%f)) / (%f)) + 0.5;
 }
 """ % (ZMIN, ZMAX - ZMIN)
 
@@ -324,6 +333,7 @@ uniform sampler2D diffuse;
 uniform int alphatest;
 uniform sampler2D heights;
 uniform float upp;      // world units a pixel
+uniform float ceilingGap;  // a cave land's roof: anything this far above the floor is left out, so the map shows the cave
 uniform float snowLo;
 uniform float snowHi;
 uniform float soften;   // for lands whose mountains' LOD is coarse: 0 leaves the facets alone
@@ -335,6 +345,10 @@ void main() {
     if (alphatest == 1 && t.a < 0.45) discard;
     vec3 n = normalize(cross(dFdx(vW), dFdy(vW)));
     if (n.z < 0.0) n = -n;
+    if (ceilingGap > 0.0) {
+        float floorZ = texelFetch(heights, ivec2(gl_FragCoord.xy), 0).r;
+        if (floorZ > -1.0e6 && vW.z - floorZ > ceilingGap) discard;
+    }
     vec3 a = t.rgb * vC.rgb;
     float outside = outsideAt(vW.xy);
     float soft = max(outside, soften);
@@ -381,13 +395,14 @@ FS_OUTLINE = """
 #version 330
 uniform sampler2D structures;
 uniform sampler2D heights;
+uniform int terrainLines;
 out vec4 f;
 float st(ivec2 p) { return texelFetch(structures, p, 0).r; }
 float at(ivec2 p) { return max(st(p), texelFetch(heights, p, 0).r); }
 void main() {
     ivec2 p = ivec2(gl_FragCoord.xy);
     // Sobel over height. Only where a structure stands in the 3x3, so terrain and rock never draw lines.
-    float s = 0.0;
+    float s = terrainLines == 1 ? 0.0 : -2.0e6;
     for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) s = max(s, st(p + ivec2(x, y)));
     if (s < -1.0e6) discard;
     float tl = at(p + ivec2(-1, 1)), t = at(p + ivec2(0, 1)), tr = at(p + ivec2(1, 1));
@@ -744,6 +759,8 @@ class Scene:
         self.obj["snowLo"].value, self.obj["snowHi"].value = 0.62, 0.86
         self.inst["snowLo"].value, self.inst["snowHi"].value = 0.50, 0.78
         self.land["landSoft"].value = world.land_soft
+        self.obj["ceilingGap"].value = world.ceiling
+        self.inst["ceilingGap"].value = world.ceiling
         self.inst["soften"].value = 0.0   # what the references place is real geometry, not coarse LOD
         # roads
         self.road_stats = None
@@ -927,7 +944,7 @@ class Scene:
     def draw_placed(self):
         """Every large static the land places, from its full model. Slower than LOD, but needs no generator."""
         c = self.ctx
-        placed = land_direct.placed_models(self.world.id)
+        placed = self.placed_refs if self.placed_refs is not None else land_direct.placed_models(self.world.id)
         if not self.world.direct and self.world.placed != "all":
             # the LOD already has this land's rock; only what it may lack is added
             placed = {k: v for k, v in placed.items() if not ROCK.search(k)}
@@ -1046,7 +1063,18 @@ class Scene:
         self.water["shallowNight"].value = wd.water[2]
         self.water["farNight"].value = wd.water[3]
         self.water["waterStyle"].value = wd.water_style
-        if "canvas" in self.water:
+        self.water["useTrue"].value = 0
+        if wd.true_coast:
+            hh, _, cells = land_direct.land_images(wd.id, tuple(int(v) for v in self.rect_cells), lambda f: None, -50000.0)
+            self.stats["coast_cells"] = cells
+            if cells:
+                true_tex = c.texture((hh.shape[1], hh.shape[0]), 1, hh[::-1].tobytes(), dtype="f4")
+                true_tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
+                true_tex.repeat_x = true_tex.repeat_y = False
+                true_tex.use(11)
+                self.water["trueHeight"].value = 11
+                self.water["useTrue"].value = 1
+        if True:
             self.water["canvas"].value = (float(self.size[0]), float(self.size[1]))
             self.water["worldRect"].value = tuple(v * CELL for v in self.rect_cells)
         self.water["winter"].value = 1.0 if wd.winter else 0.0
@@ -1242,6 +1270,7 @@ class Scene:
         self.struct_tex.use(10)
         self.height_tex.use(6)
         self.outline["structures"].value = 10
+        self.outline["terrainLines"].value = 1 if self.world.terrain_lines else 0
         self.outline["heights"].value = 6
         c.disable(moderngl.DEPTH_TEST)
         c.enable(moderngl.BLEND)
@@ -1284,17 +1313,20 @@ class Scene:
 
 def world_from_config(edid, c):
     """One land's settings from worlds.json."""
-    kw = {k: c[k] for k in ("winter", "surround", "soften", "roads", "road_extra", "land_soft", "hide", "direct", "placed", "ambient", "tone", "water", "water_style") if k in c}
+    kw = {k: c[k] for k in ("winter", "surround", "soften", "roads", "road_extra", "land_soft", "hide", "ceiling", "true_coast", "terrain_lines", "direct", "placed", "ambient", "tone", "water", "water_style") if k in c}
     return World(edid, **kw)
 
 
 class World:
-    def __init__(self, editor_id, dyn=None, folder=None, winter=True, surround=False, soften=0.0, roads=True, road_extra=None, land_soft=0.0, hide=(),
+    def __init__(self, editor_id, dyn=None, folder=None, winter=True, surround=False, soften=0.0, roads=True, road_extra=None, land_soft=0.0, hide=(), ceiling=0.0, true_coast=True, terrain_lines=False,
                  water=((0.33, 0.44, 0.52), (0.23, 0.33, 0.42), (0.055, 0.085, 0.14), (0.03, 0.05, 0.09)), water_style=0,
                  direct=False, placed=False, ambient=(0.56, 0.62, 0.74), tone=(1.0, 1.0, 1.0)):
         self.water = tuple(tuple(c) for c in water)
         self.water_style = water_style
         self.land_soft = land_soft
+        self.true_coast = true_coast
+        self.terrain_lines = terrain_lines
+        self.ceiling = ceiling
         self.hide = hide
         self.placed = placed      # add the structures its references place, from their full models, to what its LOD has
         self.direct = direct      # draw terrain and buildings from the land's records instead of its LOD
@@ -1319,6 +1351,12 @@ def render(world, rect, ppc, markers=(), sea=None, lanterns=(), lights=()):
     if not tiles and not world.direct:
         raise SystemExit("no level 4 terrain for %s in rect %s" % (world.id, rect))
     t1 = time.time()
+    sc.placed_refs = None
+    if world.placed == "all":
+        sc.placed_refs = land_direct.placed_models(world.id)
+        if not sc.placed_refs:
+            world.placed = False
+            sc.stats["no_references"] = True
     if world.direct:
         sc.draw_terrain_records()
     else:
