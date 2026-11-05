@@ -14,6 +14,7 @@
 
 #include "DevBenchTool.h"
 #include "MapState.h"
+#include "Tiles.h"
 
 #include "utils/AddressLibraryGuard.h"
 #include "utils/Logger.h"
@@ -378,13 +379,21 @@ namespace
 		}
 
 		// Mouse panning uses the pan speed directly; keys are pan speed times the keyboard value, so they stay a share of the view.
-		const float pan = g_tuning.panNear + g_tuning.panRange * std::clamp(std::log(width / world->wnear) / std::log(world->wfar / world->wnear), 0.0f, 1.0f);
+		const float pan = (std::min)(width / world->wnear, 1.0f) * g_tuning.panNear + g_tuning.panRange * std::clamp(std::log(width / world->wnear) / std::log(world->wfar / world->wnear), 0.0f, 1.0f);
 		static RE::Setting* minPan = nullptr;
 		static RE::Setting* maxPan = nullptr;
 		static RE::Setting* keys = nullptr;
 		SetSetting(minPan, "fMapWorldMinPanSpeed:MapMenu", pan);
 		SetSetting(maxPan, "fMapWorldMaxPanSpeed:MapMenu", pan);
 		SetSetting(keys, "fMapMoveKeyboardSpeed:MapMenu", g_tuning.keys * width / pan);
+
+		if (camera && g_sheet && settled)
+		{
+			const auto& tf = camera->GetRuntimeData2().viewFrustum;
+			Tiles::Frame(camera->world.translate, width, tf.fRight != 0.0f ? tf.fTop / tf.fRight : 0.5625f, d);
+		}
+		mapstate::g.tilesShowing = Tiles::Showing();
+		mapstate::g.tilesHeld = Tiles::Held();
 
 		mapstate::g.cameraX = root->world.translate.x;
 		mapstate::g.cameraY = root->world.translate.y;
@@ -412,6 +421,7 @@ namespace
 			if (found || g.frame > 600)
 			{
 				g.sheetsDone = true;
+				if (found) { Tiles::Open(Lower(data.worldSpace->editorID.c_str()), g_sheet, night); }
 				mapstate::g.night = night;
 				mapstate::g.sheets = found;
 				logger::info("Hour {} night {} sheets {} frame {} sheet z {} camera z {}", hour, night, found, g.frame, g_sheetZ, camZ);
@@ -462,6 +472,7 @@ namespace
 			{
 				g.open = false;
 				mapstate::g.open = false;
+				Tiles::Close();
 				g_sheet = nullptr;
 				if (g.frustumFallback)
 				{

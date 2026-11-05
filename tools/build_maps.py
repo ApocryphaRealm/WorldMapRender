@@ -172,6 +172,117 @@ def resolve_host(cfg, rect, edid):
     return tiles[0] if tiles else (0, 0)
 
 
+SLOTS = 64
+TILE_CELLS = 4
+CHUNK_CELLS = 32
+
+
+def write_mesh(edid, cfg, rect, out):
+    """The sheet's mesh under all five season names; its numbers are relative to the host chunk's corner."""
+    low = edid.lower()
+    hx, hy = resolve_host(cfg, rect, edid)
+    ox, oy = hx * CELL, hy * CELL
+    x0, y0, x1, y1 = rect
+    sheet_tex = "textures\\terrain\\worldmaprender\\%s.dds" % low
+    back_tex = "textures\\terrain\\worldmaprender\\backdrop.dds"
+    slots = ["textures\\terrain\\worldmaprender\\slot\\s%02d.dds" % n for n in range(SLOTS)] if cfg.get("tile_ppc") else ()
+    data = nifwrite.sheet_btr(sheet_tex, back_tex, x0 * CELL - ox, x1 * CELL - ox, y0 * CELL - oy, y1 * CELL - oy, SHEET_Z, BACK_Z, LAND_Z,
+                              ((x0 + x1) / 2 * CELL - ox, (y0 + y1) / 2 * CELL - oy), slots=slots)
+    mdir = os.path.join(out, "meshes", "terrain", edid)
+    os.makedirs(mdir, exist_ok=True)
+    for s in SEASONS:
+        with open(os.path.join(mdir, "%s.32.%d.%d%s.btr" % (low, hx, hy, s)), "wb") as f:
+            f.write(data)
+    return hx, hy
+
+
+def build_tiles(edid, cfg, rect, out, tc, only=None):
+    """Tiles of TILE_CELLS cells at the land's tile_ppc, BC1 with four mips. Rendered in chunks, since one pass stops at 16384. A tile of
+    plain sea is not written: the sheet shows. only = (i0, j0, i1, j1) limits it to a window of tiles, for a trial."""
+    ppc = cfg["tile_ppc"]
+    low = edid.lower()
+    t0 = time.time()
+    wd = render_map.world_from_config(edid, cfg)
+    mk = markers_mod.collect(edid)
+    sea = markers_mod.water_levels.get(low) if cfg.get("sea", False) else None
+    lant = lanterns_mod.collect(edid)
+    lit = lights_mod.collect(edid) if cfg.get("lights") else ()
+    x0, y0, x1, y1 = rect
+    root = os.path.join(out, "textures", "terrain", "worldmaprender", "t", low)
+    wanted = {"day": "tiles", "night": "tiles_n"}
+    single = cfg.get("single")
+    if single:
+        wanted = {single: "tiles"}
+    work = os.path.join(out, "..", "tile-work", low)
+    written = skipped = 0
+    tile_px = TILE_CELLS * ppc
+    fade = ppc * 1.5
+    nx, ny = (x1 - x0 + TILE_CELLS - 1) // TILE_CELLS, (y1 - y0 + TILE_CELLS - 1) // TILE_CELLS
+    per = CHUNK_CELLS // TILE_CELLS
+    for cj in range(0, ny, per):
+        for ci in range(0, nx, per):
+            ti0, tj0, ti1, tj1 = ci, cj, min(ci + per, nx), min(cj + per, ny)
+            if only and (ti1 <= only[0] or ti0 >= only[2] or tj1 <= only[1] or tj0 >= only[3]):
+                continue
+            rx0 = x0 + ti0 * TILE_CELLS
+            ry1 = y1 - tj0 * TILE_CELLS
+            rx1 = x0 + ti1 * TILE_CELLS
+            ry0 = y1 - tj1 * TILE_CELLS
+            wd = render_map.world_from_config(edid, cfg)
+            day, night, _, _ = render_map.render(wd, (rx0, ry0, rx1, ry1), ppc, mk, sea, lant, lit)
+            for tag, folder in wanted.items():
+                img = day if tag == "day" else night
+                edge = EDGE_DAY if tag == "day" else EDGE_NIGHT
+                d = os.path.join(work, folder)
+                os.makedirs(d, exist_ok=True)
+                os.makedirs(os.path.join(root, folder), exist_ok=True)
+                names = []
+                for j in range(tj0, tj1):
+                    for i in range(ti0, ti1):
+                        if only and not (only[0] <= i < only[2] and only[1] <= j < only[3]):
+                            continue
+                        py, px = (j - tj0) * tile_px, (i - ti0) * tile_px
+                        t = img[py:py + tile_px, px:px + tile_px].astype(np.float32)
+                        # the sheet's own soft edge, so a tile meets it
+                        gx = (i * tile_px + np.arange(tile_px)) / fade
+                        gy = (j * tile_px + np.arange(tile_px)) / fade
+                        gx2 = ((x1 - x0) * ppc - (i * tile_px + np.arange(tile_px))) / fade
+                        gy2 = ((y1 - y0) * ppc - (j * tile_px + np.arange(tile_px))) / fade
+                        m = np.clip(np.minimum(gx, gx2), 0, 1)[None, :] * np.clip(np.minimum(gy, gy2), 0, 1)[:, None]
+                        if m.min() < 1.0:
+                            m = (m * m * (3 - 2 * m))[..., None]
+                            t = t * m + edge * (1 - m)
+                        if t.std(axis=(0, 1)).max() < 1.0:
+                            skipped += 1
+                            continue
+                        p = os.path.join(d, "t%d_%d.png" % (i, j))
+                        Image.fromarray(t.astype(np.uint8)).save(p, compress_level=1)
+                        names.append(p)
+                if names:
+                    lst = os.path.join(d, "list.txt")
+                    with open(lst, "w", encoding="utf-8") as f:
+                        f.write("\n".join(names))
+                    r = subprocess.run([tc, "-nologo", "-y", "-f", "BC1_UNORM", "-m", "4", "-if", "BOX", "-o", os.path.join(root, folder), "-flist", lst], capture_output=True, text=True)
+                    if r.returncode != 0:
+                        sys.exit("texconv failed on tiles: " + r.stdout[-400:] + r.stderr[-400:])
+                    for p in names:
+                        os.remove(p)
+                    written += len(names)
+            print("tiles", edid, "chunk", ci, cj, "written", written, "plain", skipped, round(time.time() - t0), "s", flush=True)
+    shutil.rmtree(work, ignore_errors=True)
+    size = sum(os.path.getsize(os.path.join(dp, f)) for dp, _, fs in os.walk(root) for f in fs)
+    return dict(tiles=written, plain=skipped, mb=round(size / 1e6), seconds=round(time.time() - t0))
+
+
+def write_slot_files(tdir, tc):
+    d = os.path.join(tdir, "slot")
+    if os.path.isfile(os.path.join(d, "s%02d.dds" % (SLOTS - 1))):
+        return
+    os.makedirs(d, exist_ok=True)
+    for n in range(SLOTS):
+        to_dds(np.tile(EDGE_NIGHT.astype(np.uint8), (4, 4, 1)), os.path.join(d, "s%02d.dds" % n), tc)
+
+
 def build_world(edid, cfg, out, ppc, tc, preview):
     wd = render_map.world_from_config(edid, cfg)
     t0 = time.time()
@@ -182,7 +293,7 @@ def build_world(edid, cfg, out, ppc, tc, preview):
         raise SystemExit("no land found for %s" % edid)
     cfg["_rect"] = rect
     w, h = rect[2] - rect[0], rect[3] - rect[1]
-    use = min(ppc, MAX_SIDE // max(w, h))
+    use = min(cfg.get("ppc", ppc), MAX_SIDE // max(w, h))
     # both sides must be multiples of four cells' worth of block compression
     t1 = time.time()
     # "sea": true in worlds.json for a land with an open sea; elsewhere the default water level would flood its valleys
@@ -209,19 +320,7 @@ def build_world(edid, cfg, out, ppc, tc, preview):
     elif os.path.isfile(os.path.join(tdir, low + "_n.dds")):
         os.remove(os.path.join(tdir, low + "_n.dds"))
     t3 = time.time()
-    # the mesh: its numbers are relative to the host chunk's corner
-    hx, hy = resolve_host(cfg, rect, edid)
-    ox, oy = hx * CELL, hy * CELL
-    x0, y0, x1, y1 = rect
-    sheet_tex = "textures\\terrain\\worldmaprender\\%s.dds" % low
-    back_tex = "textures\\terrain\\worldmaprender\\backdrop.dds"
-    data = nifwrite.sheet_btr(sheet_tex, back_tex, x0 * CELL - ox, x1 * CELL - ox, y0 * CELL - oy, y1 * CELL - oy, SHEET_Z, BACK_Z, LAND_Z,
-                              ((x0 + x1) / 2 * CELL - ox, (y0 + y1) / 2 * CELL - oy))
-    mdir = os.path.join(out, "meshes", "terrain", edid)
-    os.makedirs(mdir, exist_ok=True)
-    for s in SEASONS:
-        with open(os.path.join(mdir, "%s.32.%d.%d%s.btr" % (low, hx, hy, s)), "wb") as f:
-            f.write(data)
+    hx, hy = write_mesh(edid, cfg, rect, out)
     return dict(world=edid, sea=sea, rect=list(rect), host=[hx, hy], size=[day.shape[1], day.shape[0]], ppc=use, markers=len(mk), stats={k: v for k, v in stats.items() if k != "missing"}, missing=stats["missing"],
                 timing=dict(render=round(t2 - t1, 1), markers=round(t1 - t0, 1), compress=round(t3 - t2, 1)), dds_mb=round(os.path.getsize(os.path.join(tdir, low + ".dds")) / 1e6, 1))
 
@@ -233,6 +332,9 @@ def main():
     ap.add_argument("--all", action="store_true")
     ap.add_argument("--ppc", type=int, default=128)
     ap.add_argument("--preview")
+    ap.add_argument("--tiles", action="store_true", help="also draw the tiles of lands with tile_ppc")
+    ap.add_argument("--tiles-only", action="store_true", help="for the lands named, the tiles and mesh only: the sheet stays as it is")
+    ap.add_argument("--tile-window", type=int, nargs=4, help="i0 j0 i1 j1: only these tiles, as a trial")
     args = ap.parse_args()
     cfg = {k: v for k, v in json.load(open(os.path.join(HERE, "worlds.json"), encoding="utf-8")).items() if not k.startswith("_")}
     names = args.world or list(cfg)
@@ -250,6 +352,14 @@ def main():
         if edid not in cfg:
             sys.exit("%s is not in worlds.json" % edid)
         low = edid.lower()
+        if args.tiles_only:
+            rect = tuple(report[edid]["rect"]) if edid in report else tuple(cfg[edid]["rect"])
+            write_slot_files(tdir, tc)
+            write_mesh(edid, cfg[edid], rect, args.out)
+            report.setdefault(edid, {})["tile_run"] = build_tiles(edid, cfg[edid], rect, args.out, tc, args.tile_window)
+            print(report[edid]["tile_run"], flush=True)
+            json.dump(report, open(report_path, "w", encoding="utf-8"), indent=1)
+            continue
         if cfg[edid].get("keep") and edid not in (args.world or []) and os.path.isfile(os.path.join(tdir, low + ".dds")):
             print("approved, kept", edid)
             continue
@@ -265,6 +375,9 @@ def main():
             print("FAILED", edid, e, flush=True)
             continue
         print(json.dumps(report[edid])[:700], flush=True)
+        if args.tiles and cfg[edid].get("tile_ppc"):
+            write_slot_files(tdir, tc)
+            report[edid]["tile_run"] = build_tiles(edid, cfg[edid], tuple(report[edid]["rect"]), args.out, tc, args.tile_window)
         json.dump(report, open(report_path, "w", encoding="utf-8"), indent=1)
     report_rects = {k: v.get("rect") for k, v in report.items()}
     json.dump(report, open(report_path, "w", encoding="utf-8"), indent=1)
@@ -281,7 +394,14 @@ def main():
             lines.append(table_line(edid, tuple(c["rect"]), c))
     with open(os.path.join(args.out, "SKSE", "Plugins", "WorldMapRender.txt"), "w", encoding="utf-8", newline="\r\n") as f:
         f.write("\n".join(lines) + "\n")
-    print("table lands:", len(lines) - 3)
+    places = ["# World Map Render tiles: edid x0 y1 (cells)"]
+    for edid, c in cfg.items():
+        if os.path.isdir(os.path.join(tdir, "t", edid.lower())):
+            r = c["rect"] if c["rect"] != "auto" else report[edid]["rect"]
+            places.append("%s %d %d" % (edid, r[0], r[3]))
+    with open(os.path.join(args.out, "SKSE", "Plugins", "WorldMapRenderTiles.txt"), "w", encoding="utf-8", newline="\r\n") as f:
+        f.write("\n".join(places) + "\n")
+    print("table lands:", len(lines) - 3, "tile lands:", len(places) - 1)
 
 
 if __name__ == "__main__":

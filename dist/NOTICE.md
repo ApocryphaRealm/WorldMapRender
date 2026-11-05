@@ -13,6 +13,8 @@ SPDX-License-Identifier: GPL-3.0-or-later
 `source/main.cpp` is based on `plugin/src/main.cpp` of GTSLandMap.dll, GTS Land Map 1.0, Copyright (C) 2026 mxdie,
 GPL-3.0-or-later, https://github.com/7mxdie/GTSLandMap, commit ab4f13e. Changed 2026-11-04: see the head of that file.
 
+`source/Tiles.cpp` is based on `plugin_tiles/src/tiles.cpp` of the same source and commit. Changed 2026-11-05: see the head of that file.
+
 Nothing else comes from that mod. Its pictures and meshes are its author's own work with no permission stated for reuse, so
 none of them is used here: the pictures are rendered from the list's LOD by `tools/render_map.py`, and the meshes are written by
 `tools/nifwrite.py`. Its file was read as a format reference only; a test compared the writer's output with it.

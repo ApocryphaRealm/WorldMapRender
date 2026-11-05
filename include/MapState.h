@@ -13,6 +13,7 @@ namespace mapstate
 		float       cameraX = 0.0f, cameraY = 0.0f, distance = 0.0f, width = 0.0f, fov = 0.0f, pan = 0.0f, sheetZ = 0.0f;
 		bool        night = false;
 		int         sheets = 0;
+		int         tilesShowing = 0, tilesHeld = 0;
 	};
 	inline Data g;
 }

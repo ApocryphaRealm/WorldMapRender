@@ -396,6 +396,7 @@ FS_OUTLINE = """
 uniform sampler2D structures;
 uniform sampler2D heights;
 uniform int terrainLines;
+uniform float lineScale;
 out vec4 f;
 float st(ivec2 p) { return texelFetch(structures, p, 0).r; }
 float at(ivec2 p) { return max(st(p), texelFetch(heights, p, 0).r); }
@@ -411,7 +412,7 @@ void main() {
     if (min(min(min(tl, t), min(tr, l)), min(min(r, bl), min(b, br))) < -1.0e6) discard;
     float gx = (tr + 2.0 * r + br) - (tl + 2.0 * l + bl);
     float gy = (tl + 2.0 * t + tr) - (bl + 2.0 * b + br);
-    float e = smoothstep(150.0, 520.0, sqrt(gx * gx + gy * gy));
+    float e = smoothstep(150.0, 520.0, sqrt(gx * gx + gy * gy) * lineScale);
     f = vec4(vec3(1.0 - e * 0.68), 1.0);
 }
 """
@@ -1270,6 +1271,7 @@ class Scene:
         self.struct_tex.use(10)
         self.height_tex.use(6)
         self.outline["structures"].value = 10
+        self.outline["lineScale"].value = self.size[0] / (self.rect_cells[2] - self.rect_cells[0]) / 128.0
         self.outline["terrainLines"].value = 1 if self.world.terrain_lines else 0
         self.outline["heights"].value = 6
         c.disable(moderngl.DEPTH_TEST)
@@ -1382,6 +1384,7 @@ def render(world, rect, ppc, markers=(), sea=None, lanterns=(), lights=()):
     sc.draw_lights(lights, ppc)
     sc.tex.save()
     day, night = sc.read(0), sc.read(1)
+    sc.ctx.release()
     t6 = time.time()
     sc.stats["missing"] = sorted(sc.stats["missing"])
     if sc.road_stats:

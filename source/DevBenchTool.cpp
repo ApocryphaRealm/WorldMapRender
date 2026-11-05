@@ -18,8 +18,8 @@ namespace DevBenchTool
 			if (!a_write) { return; }
 			const auto& s = mapstate::g;
 			const std::string out = std::format(
-				"{{\"open\":{},\"ours\":{},\"world\":\"{}\",\"camera\":[{},{}],\"distance\":{},\"viewWidth\":{},\"fov\":{},\"pan\":{},\"sheetZ\":{},\"night\":{},\"sheets\":{}}}",
-				s.open, s.ours, s.world, s.cameraX, s.cameraY, s.distance, s.width, s.fov, s.pan, s.sheetZ, s.night, s.sheets);
+				"{{\"open\":{},\"ours\":{},\"world\":\"{}\",\"camera\":[{},{}],\"distance\":{},\"viewWidth\":{},\"fov\":{},\"pan\":{},\"sheetZ\":{},\"night\":{},\"sheets\":{},\"tilesShowing\":{},\"tilesHeld\":{}}}",
+				s.open, s.ours, s.world, s.cameraX, s.cameraY, s.distance, s.width, s.fov, s.pan, s.sheetZ, s.night, s.sheets, s.tilesShowing, s.tilesHeld);
 			a_write(a_sink, out.c_str());
 		}
 	}

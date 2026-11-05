@@ -19,8 +19,8 @@ def _s(t):
 IDENT = _f(1, 0, 0, 0, 1, 0, 0, 0, 1)
 
 
-def _shape(name, translate, scale, data, shader, alpha):
-    return _i(name, 0, -1, 14) + _f(*translate) + IDENT + _f(scale) + _i(-1, data, -1, 0, 0) + b"\0" + _i(shader, alpha)
+def _shape(name, translate, scale, data, shader, alpha, flags=14):
+    return _i(name, 0, -1, flags) + _f(*translate) + IDENT + _f(scale) + _i(-1, data, -1, 0, 0) + b"\0" + _i(shader, alpha)
 
 
 def _quad_data(x0, x1, y0, y1, z, normals):
@@ -42,24 +42,24 @@ def _quad_data(x0, x1, y0, y1, z, normals):
     return d
 
 
-def _effect(tex):
-    return _i(-1, 0, -1) + struct.pack("<II", 0x80000000, 1) + _f(0, 0, 1, 1) + _s(tex) + _i(3) + _f(1, 1, 1, 1, 1, 1, 1, 1, 1, 100) + _i(0)
+def _effect(tex, clamp=3):
+    return _i(-1, 0, -1) + struct.pack("<II", 0x80000000, 1) + _f(0, 0, 1, 1) + _s(tex) + _i(clamp) + _f(1, 1, 1, 1, 1, 1, 1, 1, 1, 100) + _i(0)
 
 
 ALPHA = _i(-1, 0, -1) + struct.pack("<HB", 0x12EC, 128)
 
 
-def sheet_btr(sheet_tex, back_tex, x0, x1, y0, y1, z, back_z, land_z, land_xy, sheet_name="map sheet", back_name="map backdrop", scale=1.0):
+def sheet_btr(sheet_tex, back_tex, x0, x1, y0, y1, z, back_z, land_z, land_xy, sheet_name="map sheet", back_name="map backdrop", scale=1.0, slots=()):
     """Coordinates are relative to the chunk's own corner; x0..y1 are the sheet's edges."""
     types = ["BSMultiBoundNode", "NiTriShape", "NiTriShapeData", "BSLightingShaderProperty", "BSShaderTextureSet", "BSEffectShaderProperty", "NiAlphaProperty", "BSMultiBound", "BSMultiBoundAABB"]
-    strings = ["chunk", "Land", sheet_name, back_name]
+    strings = ["chunk", "Land", sheet_name, back_name] + ["wmr slot %02d" % n for n in range(len(slots))]
     blocks = []
 
     def add(t, b):
         blocks.append((types.index(t), b))
 
     # 0 root
-    add("BSMultiBoundNode", _i(0, 0, -1, 14) + _f(0, 0, 0) + IDENT + _f(1) + _i(-1, 3, 1, 5, 9, 0, 13, 1))
+    add("BSMultiBoundNode", _i(0, 0, -1, 14) + _f(0, 0, 0) + IDENT + _f(1) + _i(-1, 3 + len(slots), 1, 5, 9, *[15 + 4 * n for n in range(len(slots))], 0, 13, 1))
     # 1-4 the small land shape, hidden below the sheet
     lx, ly = land_xy
     add("NiTriShape", _shape(1, (0, 0, 0), 32.0, 2, 3, -1))
@@ -81,6 +81,13 @@ def sheet_btr(sheet_tex, back_tex, x0, x1, y0, y1, z, back_z, land_z, land_xy, s
     # 13-14
     add("BSMultiBound", _i(14))
     add("BSMultiBoundAABB", _f(0, 0, 0, 2000000, 2000000, 2000000))
+    # 15 on: a unit quad for each tile on show, hidden until the plugin places it; its picture is clamped, or each tile's edge blends with its opposite
+    for n, tex in enumerate(slots):
+        b = 15 + 4 * n
+        add("NiTriShape", _shape(4 + n, (0, 0, z), 1.0, b + 1, b + 2, b + 3, flags=15))
+        add("NiTriShapeData", _quad_data(0.0, 1.0, 0.0, 1.0, 0.0, True))
+        add("BSEffectShaderProperty", _effect(tex, clamp=0))
+        add("NiAlphaProperty", ALPHA)
 
     out = b"Gamebryo File Format, Version 20.2.0.7\n" + struct.pack("<IBIII", 0x14020007, 1, 12, len(blocks), 83)
     out += b"\x01\0\x01\0\x01\0"
