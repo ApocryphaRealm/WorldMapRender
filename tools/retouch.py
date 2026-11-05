@@ -51,6 +51,24 @@ def apply(img, rect, ppc, cfg):
     fill = ground[None, None, :] * (1.0 + cfg.get("mottle", 0.05) * n)
     k = keep[..., None]
     out = np.clip(img.astype(np.float32) * k + fill * (1 - k), 0, 255).astype(np.uint8)
+    # replace_colour: a flat colour (a land's empty surround drawn as water) becomes the land's snow, blended in over a short distance
+    rc = cfg.get("replace_colour")
+    if rc:
+        gx, gy = int((rc["at"][0] - rect[0]) * ppc), int((rect[3] - rc["at"][1]) * ppc)
+        key = np.median(out[gy - 8:gy + 8, gx - 8:gx + 8].reshape(-1, 3).astype(np.float32), axis=0)
+        f = out.astype(np.float32)
+        m = (np.abs(f - key).max(2) < rc.get("tol", 14)).astype(np.uint8) * 255
+        # only the colour that reaches the picture's edge: a lake of a similar blue inside the land stays
+        # the compression speckles a flat colour: close the speckle first, or the fill stops at the first hole
+        mi = Image.fromarray(m).filter(ImageFilter.MaxFilter(5)).filter(ImageFilter.MinFilter(5))
+        arr = np.asarray(mi)
+        ys, xs = np.where(arr[max(0, gy - 40):gy + 40, max(0, gx - 40):gx + 40] == 255)
+        if len(ys):
+            ImageDraw.floodfill(mi, (int(xs[0]) + max(0, gx - 40), int(ys[0]) + max(0, gy - 40)), 128)
+        m = (np.asarray(mi) == 128).astype(np.uint8) * 255
+        soft = np.asarray(Image.fromarray(m).filter(ImageFilter.GaussianBlur(max(2.0, ppc / 24.0))), dtype=np.float32)[..., None] / 255.0
+        snow = ground[None, None, :] * (1.0 + 0.05 * _noise(h, w, 11)[..., None])
+        out = np.clip(f * (1 - soft) + snow * soft, 0, 255).astype(np.uint8)
     # heal: rectangles x0 y0 x1 y1 in cells whose drawn outline is taken out, each side copied over from just beside it
     for x0, y0, x1, y1 in cfg.get("heal", []):
         px0, px1 = int((x0 - rect[0]) * ppc), int((x1 - rect[0]) * ppc)
