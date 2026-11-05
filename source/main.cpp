@@ -217,10 +217,15 @@ namespace
 		auto material = static_cast<RE::BSEffectShaderMaterial*>(effect->GetBaseMaterial());
 		if (!material || !material->sourceTexturePath.c_str()) { return 0; }
 		std::string path = material->sourceTexturePath.c_str();
-		if (Lower(path).find(kSheetKey) == std::string::npos || !a_object->name.c_str() || std::strcmp(a_object->name.c_str(), "map sheet") != 0) { return 0; }
-		g_sheetZ = a_object->world.translate.z;
-		g_sheet = a_object;
-		if (a_night) { path.insert(path.size() - 4, "_n"); }
+		if (Lower(path).find(kSheetKey) == std::string::npos) { return 0; }
+		// Every shape of ours has its picture set, as d34d519 did, but only the sheet itself gives the height and takes the night picture.
+		const bool isSheet = a_object->name.c_str() && std::strcmp(a_object->name.c_str(), "map sheet") == 0;
+		if (isSheet)
+		{
+			g_sheetZ = a_object->world.translate.z;
+			g_sheet = a_object;
+			if (a_night) { path.insert(path.size() - 4, "_n"); }
+		}
 		RE::NiPointer<RE::NiTexture> texture;
 		RE::BSShaderManager::GetTexture(path.c_str(), true, texture, false);
 		auto source = netimmerse_cast<RE::NiSourceTexture*>(texture.get());
