@@ -250,6 +250,9 @@ def main():
         if edid not in cfg:
             sys.exit("%s is not in worlds.json" % edid)
         low = edid.lower()
+        if cfg[edid].get("keep") and edid not in (args.world or []) and os.path.isfile(os.path.join(tdir, low + ".dds")):
+            print("approved, kept", edid)
+            continue
         if not args.all and not args.world and os.path.isfile(os.path.join(tdir, low + ".dds")):
             print("kept", edid)
             continue
