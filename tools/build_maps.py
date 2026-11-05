@@ -302,8 +302,9 @@ def build_world(edid, cfg, out, ppc, tc, preview):
         sea = None
     day, night, stats, timing = render_map.render(wd, rect, use, mk, sea, lanterns_mod.collect(edid), lights_mod.collect(edid) if cfg.get("lights") else ())
     t2 = time.time()
-    day = fade_edges(day.copy(), use * 1.5, EDGE_DAY)
-    night = fade_edges(night.copy(), use * 1.5, EDGE_NIGHT)
+    edge = use * cfg.get("edge_cells", 1.5)
+    day = fade_edges(day.copy(), edge, EDGE_DAY)
+    night = fade_edges(night.copy(), edge, EDGE_NIGHT)
     low = edid.lower()
     tdir = os.path.join(out, "textures", "terrain", "worldmaprender")
     if preview:

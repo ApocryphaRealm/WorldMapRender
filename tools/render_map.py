@@ -95,6 +95,7 @@ uniform sampler2D heights;
 uniform sampler2D roadmap;
 uniform float upp;
 uniform float roadsOn;
+uniform float relief;
 uniform float landSoft;  // 0 on Skyrim. Above it, shading comes from the map's heights: the LOD's normal maps ring on gentle hills
 in vec3 vW; in vec2 vUV; in vec4 vC;
 out vec4 f;
@@ -137,7 +138,7 @@ void main() {
     // Roads and paths as they are painted on the land, not as the LOD texture kept them.
     vec4 road = texture(roadmap, (vW.xy - rect.xy) / (rect.zw - rect.xy));
     a = mix(a, road.rgb, roadsOn * smoothstep(0.26, 0.55, road.a) * (1.0 - outside));
-    n.xy *= mix(1.6, 1.0, landSoft);          // the height shows better on a flat picture
+    n.xy *= mix(1.6, 1.0, landSoft) * relief;  // the height shows better on a flat picture
     f = vec4(light(a, normalize(n), 0.0), 1.0);
 }
 """
@@ -225,7 +226,7 @@ void main() {
     if (winter > 0.5) {
         // snow by slope and the ground's warmth, as on the other winter lands; steep faces stay rock
         float warm = (a.r + a.g) * 0.5 - a.b;
-        a = mix(a, SNOW * 0.97, snowcover(n, w, 0.46, 0.72) * (0.70 + 0.30 * smoothstep(0.0, 0.07, warm)));
+        a = mix(a, SNOW * 0.97, snowcover(n, w, 0.46, 0.72) * (0.70 + 0.30 * smoothstep(0.0, 0.03, warm)));
     }
     vec4 road = texture(roadmap, uv);
     a = mix(a, road.rgb, roadsOn * smoothstep(0.26, 0.55, road.a));
@@ -253,6 +254,7 @@ uniform vec3 shallowNight;
 uniform vec3 farNight;
 uniform int waterStyle;
 uniform int useTrue;
+uniform int allWater;
 uniform sampler2D trueHeight;
 uniform vec4 worldRect;
 uniform vec2 canvas;
@@ -292,7 +294,10 @@ void main() {
     float h2 = (texelFetch(heights, at + ivec2(q, q), 0).r + texelFetch(heights, at - ivec2(q, q), 0).r + texelFetch(heights, at + ivec2(q, -q), 0).r + texelFetch(heights, at + ivec2(-q, q), 0).r) * 0.25;
     float d = level - (min(h0, min(h1, h2)) < -1.0e6 ? h0 : h0 * 0.3 + h1 * 0.4 + h2 * 0.3);
     float drawAt = level;
-    if (useTrue == 1) {
+    if (allWater == 1) {
+        d = 1000.0;
+        drawAt = max(level, h0 + 1.0);
+    } else if (useTrue == 1) {
         // The land's own records decide the coast. The LOD's sea bed wanders around the water line in cells with little or no
         // land data, in fans of triangles, and those were the geometric shapes in the sea.
         d = level - texture(trueHeight, gl_FragCoord.xy / canvas).r;
@@ -776,6 +781,7 @@ class Scene:
         self.obj["snowLo"].value, self.obj["snowHi"].value = 0.62, 0.86
         self.inst["snowLo"].value, self.inst["snowHi"].value = 0.50, 0.78
         self.land["landSoft"].value = world.land_soft
+        self.land["relief"].value = world.relief
         self.obj["ceilingGap"].value = world.ceiling
         self.inst["ceilingGap"].value = world.ceiling
         self.inst["soften"].value = 0.0   # what the references place is real geometry, not coarse LOD
@@ -871,6 +877,10 @@ class Scene:
             for sh in nifread.parse(p):
                 if sh.name.lower() != "land" or sh.tris is None or not len(sh.tris):
                     continue
+                for fx0, fy0, fx1, fy1, fz in wd.flatten:
+                    wx = sh.verts[:, 0] + tx * CELL
+                    wy = sh.verts[:, 1] + ty * CELL
+                    sh.verts[(wx >= fx0 * CELL) & (wx <= fx1 * CELL) & (wy >= fy0 * CELL) & (wy <= fy1 * CELL), 2] = fz
                 if hide:
                     # drop triangles whose middle lies in a hidden rectangle
                     m = sh.verts[sh.tris].mean(1)
@@ -1126,6 +1136,7 @@ class Scene:
         self.water["farNight"].value = wd.water[3]
         self.water["waterStyle"].value = wd.water_style
         self.water["useTrue"].value = 0
+        self.water["allWater"].value = 1 if wd.all_water else 0
         if wd.true_coast:
             hh, _, cells = land_direct.land_images(wd.id, tuple(int(v) for v in self.rect_cells), lambda f: None, -50000.0)
             self.stats["coast_cells"] = cells
@@ -1376,12 +1387,12 @@ class Scene:
 
 def world_from_config(edid, c):
     """One land's settings from worlds.json."""
-    kw = {k: c[k] for k in ("winter", "surround", "soften", "roads", "road_extra", "land_soft", "hide", "ceiling", "true_coast", "terrain_lines", "alt_textures", "road_meshes", "road_colour", "road_paint", "direct", "placed", "ambient", "tone", "water", "water_style") if k in c}
+    kw = {k: c[k] for k in ("winter", "surround", "soften", "roads", "road_extra", "land_soft", "hide", "ceiling", "true_coast", "terrain_lines", "all_water", "relief", "flatten", "alt_textures", "road_meshes", "road_colour", "road_paint", "direct", "placed", "ambient", "tone", "water", "water_style") if k in c}
     return World(edid, **kw)
 
 
 class World:
-    def __init__(self, editor_id, dyn=None, folder=None, winter=True, surround=False, soften=0.0, roads=True, road_extra=None, land_soft=0.0, hide=(), ceiling=0.0, true_coast=True, terrain_lines=False, alt_textures=False, road_meshes=False, road_colour=(0.40, 0.38, 0.36), road_paint=None,
+    def __init__(self, editor_id, dyn=None, folder=None, winter=True, surround=False, soften=0.0, roads=True, road_extra=None, land_soft=0.0, hide=(), ceiling=0.0, true_coast=True, terrain_lines=False, all_water=False, relief=1.0, flatten=(), alt_textures=False, road_meshes=False, road_colour=(0.40, 0.38, 0.36), road_paint=None,
                  water=((0.33, 0.44, 0.52), (0.23, 0.33, 0.42), (0.055, 0.085, 0.14), (0.03, 0.05, 0.09)), water_style=0,
                  direct=False, placed=False, ambient=(0.56, 0.62, 0.74), tone=(1.0, 1.0, 1.0)):
         self.water = tuple(tuple(c) for c in water)
@@ -1389,6 +1400,9 @@ class World:
         self.land_soft = land_soft
         self.true_coast = true_coast
         self.terrain_lines = terrain_lines
+        self.all_water = all_water
+        self.relief = relief
+        self.flatten = flatten
         self.alt_textures = alt_textures
         self.road_meshes = road_meshes
         self.road_colour = tuple(road_colour)
