@@ -154,6 +154,7 @@ void main() { f = vec4(vW.z, 0.0, 0.0, 1.0); }
 """
 
 EFFECT_SHAPE = re.compile(r"effects\\\\|fxwater|fxmist|fxfog|fxsteam|fxcloud", re.I)
+ROAD_MODEL = re.compile(r"landscape[/\\]roads[/\\]", re.I)
 ROCK = re.compile(r"mountain|rock|cliff|boulder|ice|glacier|snowdrift|landscape", re.I)
 
 VS_FULL_EARLY = """
@@ -414,6 +415,20 @@ void main() {
     float gy = (tl + 2.0 * t + tr) - (bl + 2.0 * b + br);
     float e = smoothstep(150.0, 520.0, sqrt(gx * gx + gy * gy) * lineScale);
     f = vec4(vec3(1.0 - e * 0.68), 1.0);
+}
+"""
+
+# Road meshes: flat stone, laid over the land before anything else stands on it.
+FS_ROADMESH = """
+#version 330
+uniform int night;
+uniform vec3 stone;
+in vec3 vW; in vec2 vUV; in vec4 vC;
+out vec4 f;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+    vec3 c = stone * (0.92 + 0.16 * hash(floor(vW.xy / 96.0)));
+    f = vec4(night == 1 ? c * vec3(0.40, 0.45, 0.60) : c, 1.0);
 }
 """
 
@@ -713,6 +728,7 @@ class Scene:
         self.landimg_h = c.program(vertex_shader=VS_FULL_EARLY, fragment_shader=FS_LANDIMG_H)
         self.landimg = c.program(vertex_shader=VS_FULL_EARLY, fragment_shader=FS_LANDIMG)
         self.inst = c.program(vertex_shader=VS_INST, fragment_shader=FS_OBJ)
+        self.roadmesh = c.program(vertex_shader=VS_INST, fragment_shader=FS_ROADMESH)
         self.struct_mesh = c.program(vertex_shader=VS, fragment_shader=FS_STRUCT)
         self.struct_inst = c.program(vertex_shader=VS_INST, fragment_shader=FS_STRUCT)
         self.outline = c.program(vertex_shader=VS_FULL_EARLY, fragment_shader=FS_OUTLINE)
@@ -735,7 +751,7 @@ class Scene:
         r = tuple(v * CELL for v in rect_cells)
         for p in (self.land, self.obj, self.tree, self.inst, self.landimg):
             p["winter"].value = 1.0 if world.winter else 0.0
-        for p in (self.lightmark, self.land, self.height, self.level, self.obj, self.tree, self.glow, self.inst, self.landimg, self.struct_mesh, self.struct_inst):
+        for p in (self.roadmesh, self.lightmark, self.land, self.height, self.level, self.obj, self.tree, self.glow, self.inst, self.landimg, self.struct_mesh, self.struct_inst):
             p["rect"].value = r
         for p in (self.land, self.obj, self.tree, self.inst, self.landimg):
             p["ambientDay"].value = world.ambient
@@ -767,7 +783,7 @@ class Scene:
         self.road_stats = None
         if world.roads:
             try:
-                img, self.road_stats = roads_mod.build(world.id, tuple(int(v) for v in rect_cells), mean_colour_lookup(self.tex_for_roads()), world.road_extra)
+                img, self.road_stats = roads_mod.build(world.id, tuple(int(v) for v in rect_cells), (lambda f: np.array(world.road_paint, "f4")) if world.road_paint else mean_colour_lookup(self.tex_for_roads()), world.road_extra)
                 self.road_tex = c.texture((img.shape[1], img.shape[0]), 4, img[::-1].tobytes())
                 self.land["roadsOn"].value = 1.0
                 self.landimg["roadsOn"].value = 1.0
@@ -942,6 +958,49 @@ class Scene:
         ht.release(); ct.release()
         return cells
 
+    def _instances(self, refs):
+        inst = np.zeros((len(refs), 12), "f4")
+        for i, (x, y, z, rx, ry, rz, sc) in enumerate(refs):
+            m = land_direct.rotation(rx, ry, rz) * sc
+            inst[i, 0:3], inst[i, 3:6], inst[i, 6:9] = m[:, 0], m[:, 1], m[:, 2]
+            inst[i, 9:12] = (x, y, z)
+        return inst
+
+    def draw_road_meshes(self):
+        """A road the land's mesh makes rather than its paint. No depth test: rock and buildings draw over it afterwards, against the land."""
+        c = self.ctx
+        tex = self.tex_for_roads()
+        X0, Y0, X1, Y1 = (v * CELL for v in self.rect_cells)
+        self.roadmesh["stone"].value = self.world.road_colour
+        c.disable(moderngl.DEPTH_TEST)
+        n = 0
+        for rel, refs in (self.placed_refs or {}).items():
+            if not ROAD_MODEL.search(rel.split("|")[0]):
+                continue
+            refs = [r for r in refs if X0 - 3000 <= r[0] <= X1 + 3000 and Y0 - 3000 <= r[1] <= Y1 + 3000]
+            if not refs:
+                continue
+            shapes = land_direct.load_model(rel, tex)
+            if not shapes:
+                continue
+            ib_inst = c.buffer(self._instances(refs).tobytes())
+            for verts, uvs, cols, tris, *_ in shapes:
+                data = np.zeros((len(verts), 9), "f4")
+                data[:, :3] = verts
+                data[:, 3:5] = uvs
+                vb = c.buffer(data.tobytes())
+                ib = c.buffer(tris.astype("u4").tobytes())
+                vao = c.vertex_array(self.roadmesh, [(vb, "3f 2f 4f", "in_pos", "in_uv", "in_col"), (ib_inst, "3f 3f 3f 3f/i", "in_m0", "in_m1", "in_m2", "in_t")], ib)
+                for i, (fb, _) in enumerate(self.fbs):
+                    fb.use()
+                    self.roadmesh["night"].value = i
+                    vao.render(moderngl.TRIANGLES, instances=len(refs))
+                vao.release(); vb.release(); ib.release()
+            ib_inst.release()
+            n += len(refs)
+        self.stats["road_meshes"] = n
+        c.enable(moderngl.DEPTH_TEST)
+
     def draw_placed(self):
         """Every large static the land places, from its full model. Slower than LOD, but needs no generator."""
         c = self.ctx
@@ -958,6 +1017,8 @@ class Scene:
         failed = 0
         tex = self.tex_for_roads()
         for rel, refs in placed.items():
+            if self.world.road_meshes and ROAD_MODEL.search(rel.split("|")[0]):
+                continue
             refs = [r for r in refs if X0 - 3000 <= r[0] <= X1 + 3000 and Y0 - 3000 <= r[1] <= Y1 + 3000]
             if not refs:
                 continue
@@ -993,7 +1054,7 @@ class Scene:
                     self.inst["night"].value = i
                     vao.render(moderngl.TRIANGLES, instances=len(refs))
                 vao.release()
-                if not ROCK.search(rel):
+                if not ROCK.search(rel.split("|")[0]):
                     c.disable(moderngl.BLEND)
                     vao = c.vertex_array(self.struct_inst, [(vb, "3f 2f 4f", "in_pos", "in_uv", "in_col"), (ib_inst, "3f 3f 3f 3f/i", "in_m0", "in_m1", "in_m2", "in_t")], ib)
                     self.struct_inst["diffuse"].value = 0
@@ -1315,12 +1376,12 @@ class Scene:
 
 def world_from_config(edid, c):
     """One land's settings from worlds.json."""
-    kw = {k: c[k] for k in ("winter", "surround", "soften", "roads", "road_extra", "land_soft", "hide", "ceiling", "true_coast", "terrain_lines", "direct", "placed", "ambient", "tone", "water", "water_style") if k in c}
+    kw = {k: c[k] for k in ("winter", "surround", "soften", "roads", "road_extra", "land_soft", "hide", "ceiling", "true_coast", "terrain_lines", "alt_textures", "road_meshes", "road_colour", "road_paint", "direct", "placed", "ambient", "tone", "water", "water_style") if k in c}
     return World(edid, **kw)
 
 
 class World:
-    def __init__(self, editor_id, dyn=None, folder=None, winter=True, surround=False, soften=0.0, roads=True, road_extra=None, land_soft=0.0, hide=(), ceiling=0.0, true_coast=True, terrain_lines=False,
+    def __init__(self, editor_id, dyn=None, folder=None, winter=True, surround=False, soften=0.0, roads=True, road_extra=None, land_soft=0.0, hide=(), ceiling=0.0, true_coast=True, terrain_lines=False, alt_textures=False, road_meshes=False, road_colour=(0.40, 0.38, 0.36), road_paint=None,
                  water=((0.33, 0.44, 0.52), (0.23, 0.33, 0.42), (0.055, 0.085, 0.14), (0.03, 0.05, 0.09)), water_style=0,
                  direct=False, placed=False, ambient=(0.56, 0.62, 0.74), tone=(1.0, 1.0, 1.0)):
         self.water = tuple(tuple(c) for c in water)
@@ -1328,6 +1389,10 @@ class World:
         self.land_soft = land_soft
         self.true_coast = true_coast
         self.terrain_lines = terrain_lines
+        self.alt_textures = alt_textures
+        self.road_meshes = road_meshes
+        self.road_colour = tuple(road_colour)
+        self.road_paint = road_paint
         self.ceiling = ceiling
         self.hide = hide
         self.placed = placed      # add the structures its references place, from their full models, to what its LOD has
@@ -1355,7 +1420,7 @@ def render(world, rect, ppc, markers=(), sea=None, lanterns=(), lights=()):
     t1 = time.time()
     sc.placed_refs = None
     if world.placed == "all":
-        sc.placed_refs = land_direct.placed_models(world.id)
+        sc.placed_refs = land_direct.placed_models(world.id, world.alt_textures)
         if not sc.placed_refs:
             world.placed = False
             sc.stats["no_references"] = True
@@ -1367,6 +1432,8 @@ def render(world, rect, ppc, markers=(), sea=None, lanterns=(), lights=()):
         sc.draw_children()
     t2 = time.time()
     sc.draw_water(tiles, sea)
+    if world.road_meshes and sc.placed_refs:
+        sc.draw_road_meshes()
     t3 = time.time()
     centres = sc.draw_objects(tiles)
     if world.direct or world.placed:

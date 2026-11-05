@@ -140,11 +140,26 @@ def rotation(rx, ry, rz):
     return X @ Y @ Z
 
 
-def placed_models(world):
-    """{model path: [(x, y, z, rx, ry, rz, scale), ...]} for large statics, enabled and undeleted, in the land and its child worlds."""
+def parse_mods(s, form):
+    """A record's alternate textures: [(3D shape name, texture set form)]."""
+    out = []
+    n = struct.unpack_from("<I", s)[0]
+    p = 4
+    for _ in range(n):
+        ln = struct.unpack_from("<I", s, p)[0]
+        name = s[p + 4:p + 4 + ln].decode("latin1", "replace")
+        p += 4 + ln
+        out.append((name, form(struct.unpack_from("<I", s, p)[0])))
+        p += 8
+    return out
+
+
+def placed_models(world, alt_textures=False):
+    """{model path: [(x, y, z, rx, ry, rz, scale), ...]} for large statics, enabled and undeleted, in the land and its child worlds.
+    With alt_textures the key is "model|shape=texture|...": the record swaps those shapes' diffuse, as the game does."""
     target = world.lower()
     mods = M.active_mods()
-    bases, refs = {}, {}
+    bases, refs, sets = {}, {}, {}
     names, parents = {}, {}   # across plugins: a plugin may override a child world without carrying its parent's record
     for name in M.active_plugins():
         path = M.find_plugin(name, mods)
@@ -209,22 +224,39 @@ def placed_models(world):
         while p + 24 <= len(d):
             gs = struct.unpack_from("<I", d, p + 4)[0]
             label = d[p + 8:p + 12]
-            if label in (b"STAT", b"MSTT"):
+            if label == b"TXST" and alt_textures:
                 q = p + 24
                 while q < p + gs:
                     sz, fl, fid = struct.unpack_from("<III", d, q + 4)
                     body = d[q + 24:q + 24 + sz]
                     if fl & FLAG_COMPRESSED:
                         body = zlib.decompress(body[4:])
-                    model, bound = None, None
+                    for t, s in M.subs(body):
+                        if t == b"TX00":
+                            sets[form(fid)] = s[:-1].decode("latin1")
+                            break
+                    q += 24 + sz
+            elif label in (b"STAT", b"MSTT"):
+                q = p + 24
+                while q < p + gs:
+                    sz, fl, fid = struct.unpack_from("<III", d, q + 4)
+                    body = d[q + 24:q + 24 + sz]
+                    if fl & FLAG_COMPRESSED:
+                        body = zlib.decompress(body[4:])
+                    model, bound, swaps = None, None, ()
                     for t, s in M.subs(body):
                         if t == b"MODL":
                             model = s[:-1].decode("latin1")
                         elif t == b"OBND" and len(s) == 12:
                             bound = struct.unpack("<6h", s)
+                        elif t == b"MODS" and alt_textures and len(s) >= 4:
+                            try:
+                                swaps = parse_mods(s, form)
+                            except struct.error:
+                                swaps = ()
                     if model and bound:
                         across = max(bound[3] - bound[0], bound[4] - bound[1])
-                        bases[form(fid)] = (model, across)
+                        bases[form(fid)] = (model, across, swaps)
                     q += 24 + sz
             elif label == b"WRLD":
                 walk(p + 24, p + gs, None)
@@ -234,12 +266,23 @@ def placed_models(world):
         info = bases.get(b)
         if not info or info[1] * scale < MIN_SIZE or SKIP_MODEL.search(info[0]) or "ceiling" in info[0].lower():
             continue
-        out.setdefault(info[0].lower().replace("/", "\\"), []).append((*pos, scale))
+        key = info[0].lower().replace("/", "\\")
+        for name, set_form in info[2]:
+            if set_form in sets:
+                key += "|%s=%s" % (name.lower(), sets[set_form])
+        out.setdefault(key, []).append((*pos, scale))
     return out
 
 
 def load_model(rel, tex):
     """Shapes of a full model: [(verts, uvs, colours, tris, texture path)], in the model's own space."""
+    swaps = {}
+    if "|" in rel:
+        parts = rel.split("|")
+        rel = parts[0]
+        for p in parts[1:]:
+            a, b = p.split("=", 1)
+            swaps[a] = b
     path = rel if rel.startswith("meshes\\") else "meshes\\" + rel
     f = tex.find(path)
     data = open(f, "rb").read() if f else tex.archived(path)
@@ -253,5 +296,6 @@ def load_model(rel, tex):
             continue
         # the diffuse's alpha is often not transparency (specular, in PBR sets), so only a shape that asks for alpha testing gets it
         cut = bool(s.alpha and (s.alpha[0] & 0x200))
-        out.append((s.verts, s.uvs, s.colors, s.tris, s.textures[0], cut))
+        tex_path = swaps.get(s.name.lower(), s.textures[0])
+        out.append((s.verts, s.uvs, s.colors, s.tris, tex_path, cut))
     return out

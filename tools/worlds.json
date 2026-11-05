@@ -1,5 +1,5 @@
 {
-    "_comment": "Lands that get a rendered map. rect: cells x0 y0 x1 y1 of the sheet, or auto (the land above water, the markers and a margin). host: the level 32 LOD chunk the sheet's mesh is named after, or auto (the chunk under the middle of the sheet). onamz: the map offset height. usable: the map data's usable size. Other lands keep their paper map or their 3D map. winter: false for lands the permanent winter does not reach, which then keep their own colours. surround: true blends the land beyond the markers into smooth snow and rock, fading its object LOD. soften: 0 to 1 for lands whose mountain LOD is coarser than Skyrim's, measured in PLAN.md. road_extra: more landscape textures to draw as paths, for a land whose paths are painted in plain dirt. sea: true for a land with an open sea. direct: terrain and buildings from the land's records, not LOD. ambient, tone: the day light. placed: also draw the structures the land's references place, from their full models. single: day or night: one picture, for a land with no sky cycle. lights: true marks every light and glowing plant the references place. water: shallow and deep colours, day then night. water_style 1: Apocrypha. placed all: rock as well. land_soft: shade terrain from the map's heights, and lay snow on gentle dark ground. hide: cell rectangles of filler terrain to leave out. placed all: every structure and rock from its full model, instead of object LOD. ceiling: for a cave land, leave out what stands this far above the floor. true_coast: false takes the coast from the LOD's heights instead of the land's records. terrain_lines: true also traces the terrain's edges, as the approved Skyrim map was drawn. keep: the owner approved this land's picture; a rerun leaves it unless the land is named with --world. ppc: this land's sheet size in pixels a cell. tile_ppc: tiles over the sheet at this size.",
+    "_comment": "Lands that get a rendered map. rect: cells x0 y0 x1 y1 of the sheet, or auto (the land above water, the markers and a margin). host: the level 32 LOD chunk the sheet's mesh is named after, or auto (the chunk under the middle of the sheet). onamz: the map offset height. usable: the map data's usable size. Other lands keep their paper map or their 3D map. winter: false for lands the permanent winter does not reach, which then keep their own colours. surround: true blends the land beyond the markers into smooth snow and rock, fading its object LOD. soften: 0 to 1 for lands whose mountain LOD is coarser than Skyrim's, measured in PLAN.md. road_extra: more landscape textures to draw as paths, for a land whose paths are painted in plain dirt. sea: true for a land with an open sea. direct: terrain and buildings from the land's records, not LOD. ambient, tone: the day light. placed: also draw the structures the land's references place, from their full models. single: day or night: one picture, for a land with no sky cycle. lights: true marks every light and glowing plant the references place. water: shallow and deep colours, day then night. water_style 1: Apocrypha. placed all: rock as well. land_soft: shade terrain from the map's heights, and lay snow on gentle dark ground. hide: cell rectangles of filler terrain to leave out. placed all: every structure and rock from its full model, instead of object LOD. ceiling: for a cave land, leave out what stands this far above the floor. true_coast: false takes the coast from the LOD's heights instead of the land's records. terrain_lines: true also traces the terrain's edges, as the approved Skyrim map was drawn. keep: the owner approved this land's picture; a rerun leaves it unless the land is named with --world. ppc: this land's sheet size in pixels a cell. tile_ppc: tiles over the sheet at this size. alt_textures: read the texture swaps on model records. road_meshes: road models drawn as flat stone in road_colour. road_paint: painted roads take this colour rather than their texture's.",
     "Tamriel": {
         "name": "Skyrim",
         "rect": [
@@ -85,7 +85,8 @@
             2.0
         ],
         "ceiling": 1500.0,
-        "ppc": 256
+        "ppc": 256,
+        "alt_textures": true
     },
     "DLC01FalmerValley": {
         "name": "Forgotten Vale",
@@ -171,7 +172,14 @@
         "surround": false,
         "direct": true,
         "placed": "all",
-        "ppc": 227
+        "ppc": 227,
+        "alt_textures": true,
+        "road_meshes": true,
+        "road_paint": [
+            0.4,
+            0.38,
+            0.36
+        ]
     },
     "Sovngarde": {
         "name": "Sovngarde",
@@ -184,7 +192,8 @@
         "winter": false,
         "sea": true,
         "land_soft": 0.0,
-        "ppc": 256
+        "ppc": 256,
+        "alt_textures": true
     },
     "DLC1HunterHQWorld": {
         "name": "Dayspring Canyon",
@@ -196,7 +205,8 @@
         "onamz": 192264.953125,
         "placed": "all",
         "land_soft": 0.8,
-        "ppc": 256
+        "ppc": 256,
+        "alt_textures": true
     },
     "DLC2ApocryphaWorld": {
         "name": "Apocrypha",
@@ -221,7 +231,8 @@
             0.98,
             0.9
         ],
-        "ppc": 256
+        "ppc": 256,
+        "alt_textures": true
     },
     "SkuldafnWorld": {
         "name": "Skuldafn",
@@ -253,7 +264,8 @@
             ]
         ],
         "land_soft": 0.8,
-        "ppc": 256
+        "ppc": 256,
+        "alt_textures": true
     },
     "BSKHyorkerIsle": {
         "name": "Hjorkvild Isles",
@@ -266,6 +278,7 @@
         "sea": true,
         "placed": "all",
         "land_soft": 0.8,
-        "ppc": 256
+        "ppc": 256,
+        "alt_textures": true
     }
 }
