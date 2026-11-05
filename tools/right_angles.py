@@ -190,11 +190,13 @@ def main():
                 continue
             img = decode(src, work, tc)
             r = sweep(img, edid, rect, ppc, cfg[edid].get("edge_cells", 1.5), mk)
-            result[edid][tag] = dict(real=len(r["real"]), odd=len(r["odd"]), stairs=r["stairs"], where=[where(x, rect, ppc) for x in r["odd"][:40]])
+            # A block's edge runs a cell or more. The compression sharpens short model edges back up to the search's quarter cell, so the two are told apart.
+            long_runs = [x for x in r["odd"] if (x[3] - x[2]) >= ppc / 2]
+            result[edid][tag] = dict(real=len(r["real"]), odd=len(r["odd"]), long=len(long_runs), stairs=r["stairs"], where=[where(x, rect, ppc) for x in long_runs[:40]])
             overview(img, r, os.path.join(root, "sweep", "%s-%s-%s.jpg" % (low, tag, a.label)))
             os.remove(os.path.join(work, name + ".png"))
-            print(edid, tag, "buildings", len(r["real"]), "outside buildings", len(r["odd"]), "stairs", r["stairs"], flush=True)
-            if r["odd"] and not cfg[edid].get("sweep_note"):
+            print(edid, tag, "buildings", len(r["real"]), "outside buildings", len(r["odd"]), "of them half a cell or longer", len(long_runs), "stairs", r["stairs"], flush=True)
+            if long_runs or (r["odd"] and not cfg[edid].get("sweep_note")):
                 failed.append(edid + " " + tag)
     p = os.path.join(root, "sweep", "report-%s.json" % a.label)
     json.dump(result, open(p, "w", encoding="utf-8"), indent=1)
