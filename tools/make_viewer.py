@@ -1,17 +1,53 @@
-"""Build one self-contained map viewer page from a folder of labelled maps: a big plain label, wheel zoom at the cursor, drag to pan.
-py -3 make_viewer.py <folder of NN-Name-day.jpg / NN-Name-night.jpg> [out.html]"""
+"""Build one map viewer page: a big plain label, wheel zoom at the cursor, drag to pan.
+
+    make_viewer.py <mod data folder> [out folder]     the DDS pictures the game loads, full size: what zooming shows is what the game has
+    make_viewer.py <folder of NN-Name-day.jpg ...> [out.html]     small pictures, embedded in one file
+
+From a data folder it writes <out>/maps-viewer.html and <out>/full/*.jpg beside it, so the page needs that folder kept with it.
+"""
 import base64, glob, json, os, re, sys
 
+from PIL import Image
+
+Image.MAX_IMAGE_PIXELS = None
+HERE = os.path.dirname(os.path.abspath(__file__))
 folder = sys.argv[1]
-out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(folder, "maps-viewer.html")
+tdir = os.path.join(folder, "textures", "terrain", "worldmaprender")
 maps = {}
-for p in sorted(glob.glob(os.path.join(folder, "*.jpg"))):
-    g = re.match(r"(\d+)-(.+)-(day|night)\.jpg$", os.path.basename(p))
-    if not g:
-        continue
-    name = g.group(2).replace("-", " ").replace("Cyrodiil", "Bruma")
-    entry = maps.setdefault(g.group(1), {"num": int(g.group(1)), "name": name, "pics": {}})
-    entry["pics"][g.group(3)] = "data:image/jpeg;base64," + base64.b64encode(open(p, "rb").read()).decode()
+if os.path.isdir(tdir):
+    root = sys.argv[2] if len(sys.argv) > 2 else folder
+    out = os.path.join(root, "maps-viewer.html")
+    os.makedirs(os.path.join(root, "full"), exist_ok=True)
+    cfg = json.load(open(os.path.join(HERE, "worlds.json"), encoding="utf-8"))
+    n = 0
+    for ed, c in cfg.items():
+        if ed.startswith("_"):
+            continue
+        n += 1
+        low = ed.lower()
+        single = c.get("single")
+        for tag, f in (((single, low + ".dds"),) if single else (("day", low + ".dds"), ("night", low + "_n.dds"))):
+            src = os.path.join(tdir, f)
+            if not os.path.isfile(src):
+                continue
+            name = "%02d-%s-%s.jpg" % (n, c["name"].replace(" ", "-"), tag)
+            dest = os.path.join(root, "full", name)
+            if not os.path.isfile(dest) or os.path.getmtime(dest) < os.path.getmtime(src):
+                im = Image.open(src)
+                im.load()
+                im.convert("RGB").save(dest, quality=93, subsampling=0)
+                print(name, im.size, flush=True)
+            entry = maps.setdefault(n, {"num": n, "name": c["name"], "pics": {}})
+            entry["pics"][tag] = "full/" + name
+else:
+    out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(folder, "maps-viewer.html")
+    for p in sorted(glob.glob(os.path.join(folder, "*.jpg"))):
+        g = re.match(r"(\d+)-(.+)-(day|night)\.jpg$", os.path.basename(p))
+        if not g:
+            continue
+        name = g.group(2).replace("-", " ").replace("Cyrodiil", "Bruma")
+        entry = maps.setdefault(g.group(1), {"num": int(g.group(1)), "name": name, "pics": {}})
+        entry["pics"][g.group(3)] = "data:image/jpeg;base64," + base64.b64encode(open(p, "rb").read()).decode()
 data = json.dumps([maps[k] for k in sorted(maps)])
 page = """<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Map Viewer</title>
 <style>
