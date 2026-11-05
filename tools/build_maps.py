@@ -19,6 +19,7 @@ import time
 
 import numpy as np
 import retouch
+import right_angles
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -310,6 +311,10 @@ def build_world(edid, cfg, out, ppc, tc, preview):
     if cfg.get("retouch"):
         day = retouch.apply(day, rect, use, cfg["retouch"])
         night = retouch.apply(night, rect, use, cfg["retouch"])
+    # Right angles outside buildings are healed, and whatever is left stops the land here, before a picture is written (no sweep_note, no picture).
+    day, _ = right_angles.clean(day, edid, rect, use, cfg.get("edge_cells", 1.5))
+    night, _ = right_angles.clean(night, edid, rect, use, cfg.get("edge_cells", 1.5))
+    swept = right_angles.gate(day, night, edid, cfg, rect, use)
     edge = use * cfg.get("edge_cells", 1.5)
     day = fade_edges(day.copy(), edge, EDGE_DAY)
     night = fade_edges(night.copy(), edge, EDGE_NIGHT)
@@ -334,7 +339,7 @@ def build_world(edid, cfg, out, ppc, tc, preview):
         os.remove(os.path.join(tdir, low + "_n.dds"))
     t3 = time.time()
     hx, hy = write_mesh(edid, cfg, rect, out)
-    return dict(world=edid, sea=sea, rect=list(rect), host=[hx, hy], size=[day.shape[1], day.shape[0]], ppc=use, markers=len(mk), stats={k: v for k, v in stats.items() if k != "missing"}, missing=stats["missing"],
+    return dict(sweep=swept, world=edid, sea=sea, rect=list(rect), host=[hx, hy], size=[day.shape[1], day.shape[0]], ppc=use, markers=len(mk), stats={k: v for k, v in stats.items() if k != "missing"}, missing=stats["missing"],
                 timing=dict(render=round(t2 - t1, 1), markers=round(t1 - t0, 1), compress=round(t3 - t2, 1)), dds_mb=round(os.path.getsize(os.path.join(tdir, low + ".dds")) / 1e6, 1))
 
 
