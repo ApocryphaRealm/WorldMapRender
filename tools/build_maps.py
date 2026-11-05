@@ -87,7 +87,7 @@ def to_dds(img, dest, tc):
     d = os.path.dirname(dest)
     r = subprocess.run([tc, "-nologo", "-y", "-f", "BC1_UNORM", "-m", "0", "-if", "BOX", "-o", d, tmp], capture_output=True, text=True)
     made = tmp[:-4] + ".dds"  # texconv replaces the last extension
-    if not os.path.isfile(dest) and os.path.isfile(made):
+    if os.path.isfile(made):
         os.replace(made, dest)
     os.remove(tmp)
     if r.returncode != 0 or not os.path.isfile(dest):
@@ -123,24 +123,29 @@ def table_line(edid, rect, cfg):
 
 
 def auto_rect(edid, mk):
-    """The land above water, grown by a tile, plus every marker with a margin; whole cells."""
-    d = os.path.join(render_map.MODS, "xLODGen Output", "meshes", "terrain", edid)
+    """Where the land's content is: its object LOD tiles and its markers, with a margin; whole cells. A land with no object LOD
+    (Beyond Skyrim's Cyrodiil here) uses the terrain standing above water instead. Terrain alone is not used where objects exist,
+    because the LOD also carries miles of empty border."""
     xs, ys = [], []
-    for f in glob.glob(os.path.join(d, "*.4.*.btr")):
-        m = re.match(r".*\.4\.(-?\d+)\.(-?\d+)\.btr$", f, re.I)
-        if not m:
-            continue
-        tx, ty = int(m.group(1)), int(m.group(2))
-        shapes = nifread.parse(f)
-        land = [sh for sh in shapes if sh.name.lower() == "land" and sh.verts is not None]
-        water = [float(sh.verts[:, 2].mean()) for sh in shapes if sh.name.lower() != "land" and sh.verts is not None and len(sh.verts)]
-        if not land:
-            continue
-        top = float(land[0].verts[:, 2].max())
-        if water and top <= max(water) + 20.0:
-            continue
-        xs += [tx, tx + 4]
-        ys += [ty, ty + 4]
+    o = os.path.join(render_map.MODS, "DynDOLOD Output", "meshes", "Terrain", edid, "Objects")
+    for f in glob.glob(os.path.join(o, "*.4.*.bto")):
+        m = re.match(r".*\.4\.(-?\d+)\.(-?\d+)\.bto$", f, re.I)
+        if m:
+            xs += [int(m.group(1)), int(m.group(1)) + 4]
+            ys += [int(m.group(2)), int(m.group(2)) + 4]
+    if not xs:
+        d = os.path.join(render_map.MODS, "xLODGen Output", "meshes", "terrain", edid)
+        for f in glob.glob(os.path.join(d, "*.4.*.btr")):
+            m = re.match(r".*\.4\.(-?\d+)\.(-?\d+)\.btr$", f, re.I)
+            if not m:
+                continue
+            shapes = nifread.parse(f)
+            land = [sh for sh in shapes if sh.name.lower() == "land" and sh.verts is not None and len(sh.verts)]
+            water = [float(sh.verts[:, 2].mean()) for sh in shapes if sh.name.lower() != "land" and sh.verts is not None and len(sh.verts)]
+            if not land or (water and float(land[0].verts[:, 2].max()) <= max(water) + 20.0):
+                continue
+            xs += [int(m.group(1)), int(m.group(1)) + 4]
+            ys += [int(m.group(2)), int(m.group(2)) + 4]
     for r in mk:
         xs += [int(r["x"] // CELL) - 2, int(r["x"] // CELL) + 3]
         ys += [int(r["y"] // CELL) - 2, int(r["y"] // CELL) + 3]
@@ -166,7 +171,7 @@ def resolve_host(cfg, rect, edid):
 
 
 def build_world(edid, cfg, out, ppc, tc, preview):
-    wd = render_map.World(edid)
+    wd = render_map.World(edid, winter=cfg.get("winter", True))
     t0 = time.time()
     mk = markers_mod.collect(edid)
     rect = auto_rect(edid, mk) if cfg["rect"] == "auto" else tuple(cfg["rect"])
@@ -237,10 +242,17 @@ def main():
             print("kept", edid)
             continue
         print("building", edid, flush=True)
-        report[edid] = build_world(edid, cfg[edid], args.out, args.ppc, tc, args.preview)
+        try:
+            report[edid] = build_world(edid, cfg[edid], args.out, args.ppc, tc, args.preview)
+        except (Exception, SystemExit) as e:
+            # one land's failure must not cost the others; it stays on its old map, and the report says why
+            report[edid] = {"failed": str(e)[:300]}
+            print("FAILED", edid, e, flush=True)
+            continue
         print(json.dumps(report[edid])[:700], flush=True)
         json.dump(report, open(report_path, "w", encoding="utf-8"), indent=1)
     report_rects = {k: v.get("rect") for k, v in report.items()}
+    json.dump(report, open(report_path, "w", encoding="utf-8"), indent=1)
     for edid, c in cfg.items():
         if c["rect"] == "auto" and report_rects.get(edid):
             c["rect"] = report_rects[edid]

@@ -62,7 +62,9 @@ float noise(vec2 p) {
     return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
 }
 // Permanent winter: anything facing up lies under snow, whatever its LOD colour; steep faces keep their own.
+uniform float winter;
 float snowcover(vec3 n, vec2 w, float lo, float hi) {
+    if (winter < 0.5) return 0.0;
     float k = noise(w / 170.0) * 0.5 + noise(w / 900.0) * 0.5;
     return smoothstep(lo, hi, n.z + (k - 0.5) * 0.28);
 }
@@ -158,7 +160,7 @@ void main() {
     float bough = 0.55 + 0.45 * sin(ang * 7.0 + vR);
     if (r > 0.45 + 0.55 * bough) discard;
     vec3 c = vRGB * vec3(0.42, 0.50, 0.46);
-    f = vec4(light(mix(c, SNOW, 0.34 * (1.0 - r)), n, 0.0), 1.0);
+    f = vec4(light(mix(c, SNOW, winter * 0.34 * (1.0 - r)), n, 0.0), 1.0);
 }
 """
 
@@ -171,7 +173,7 @@ void main() {
     float r = dot(vP, vP);
     if (r > 1.0) discard;
     float a = (1.0 - r);
-    f = vec4(vec3(1.0, 0.68, 0.36) * a * a * vRGB.x, 1.0);
+    f = vec4(vec3(1.0, 0.68, 0.36) * a * min(vRGB.x * 1.7, 1.0), 1.0);
 }
 """
 
@@ -311,6 +313,8 @@ class Scene:
         self.tree = c.program(vertex_shader=VS_TREE, fragment_shader=FS_TREE)
         self.glow = c.program(vertex_shader=VS_TREE, fragment_shader=FS_GLOW)
         r = tuple(v * CELL for v in rect_cells)
+        for p in (self.land, self.obj, self.tree):
+            p["winter"].value = 1.0 if world.winter else 0.0
         for p in (self.land, self.water, self.obj, self.tree, self.glow):
             p["rect"].value = r
         self.atlases = {}
@@ -379,7 +383,7 @@ class Scene:
             if os.path.isfile(dp) and os.path.isfile(np_):
                 texs = (load_texture(c, dp), load_texture(c, np_))
             for s in shapes:
-                if s.name.lower() != "land" or texs is None:
+                if s.name.lower() != "land" or texs is None or s.tris is None or not len(s.tris):
                     continue
                 vao, vb, ib = self._mesh(self.land, s.verts, s.uvs, None, s.tris, origin)
                 texs[0].use(0)
@@ -407,7 +411,7 @@ class Scene:
                 continue
             origin = (tx * CELL, ty * CELL, 0.0)
             for sh in nifread.parse(p):
-                if sh.name.lower() == "land" or sh.tris is None:
+                if sh.name.lower() == "land" or sh.tris is None or not len(sh.tris):
                     continue
                 vao, vb, ib = self._mesh(self.water, sh.verts, None, None, sh.tris, origin)
                 self.draw_both(self.water, vao)
@@ -457,7 +461,7 @@ class Scene:
             if not os.path.isfile(p):
                 continue
             for s in nifread.parse(p):
-                if s.tris is None or s.uvs is None or not s.textures or s.name.lower() == "treepassthru":
+                if s.tris is None or not len(s.tris) or s.uvs is None or not s.textures or s.name.lower() == "treepassthru":
                     continue
                 t = s.textures[0].lower()
                 if "_glow" in t:
@@ -531,7 +535,7 @@ class Scene:
                  0x23: (2200.0, 0.5), 0x25: (2200.0, 0.5), 0x28: (2200.0, 0.5), 0x2C: (2200.0, 0.5)}
         pools = [(m["x"], m["y"], sizes[m["type"]][0], sizes[m["type"]][1]) for m in markers if m.get("type") in sizes]
         if len(centres):
-            pools.extend((c[0], c[1], 640.0, 0.05) for c in centres)
+            pools.extend((c[0], c[1], 420.0, 0.42) for c in centres)
         if not pools:
             return
         self.stats["glows"] = len(pools)
@@ -539,6 +543,7 @@ class Scene:
         c.disable(moderngl.DEPTH_TEST)
         c.enable(moderngl.BLEND)
         c.blend_func = (moderngl.ONE, moderngl.ONE)
+        c.blend_equation = moderngl.MAX
         a = np.array(pools, "f4")
         inst = np.zeros((len(pools), 4), "f4")
         inst[:, :2] = a[:, :2]
@@ -546,6 +551,7 @@ class Scene:
         rgb = np.zeros((len(pools), 3), "f4")
         rgb[:, 0] = a[:, 3]
         self._sprites(self.glow, inst, rgb, (1,))
+        c.blend_equation = moderngl.FUNC_ADD
         c.disable(moderngl.BLEND)
         c.blend_func = (moderngl.SRC_ALPHA, moderngl.ONE_MINUS_SRC_ALPHA)
 
@@ -557,7 +563,8 @@ class Scene:
 
 
 class World:
-    def __init__(self, editor_id, dyn=None, folder=None):
+    def __init__(self, editor_id, dyn=None, folder=None, winter=True):
+        self.winter = winter
         self.id = editor_id
         self.lower = editor_id.lower()
         self.folder = folder or editor_id
