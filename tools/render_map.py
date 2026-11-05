@@ -358,8 +358,6 @@ void main() {
     if (alphatest == 1 && t.a < 0.45) discard;
     vec3 n = normalize(cross(dFdx(vW), dFdy(vW)));
     if (n.z < 0.0) n = -n;
-    // Each triangle is lit flat, so a low-detail model shows its facets: this leans them all toward straight up, by this share.
-    n = normalize(mix(n, vec3(0.0, 0.0, 1.0), facetSoft));
     if (ceilingGap > 0.0) {
         float floorZ = texelFetch(heights, ivec2(gl_FragCoord.xy), 0).r;
         if (floorZ > -1.0e6 && vW.z - floorZ > ceilingGap) discard;
@@ -388,7 +386,8 @@ void main() {
         fade *= 1.0 - smoothstep(0.30, 0.95, outside);
         if (fade <= 0.01) discard;
     }
-    f = vec4(light(a, n, 0.0), fade);
+    // Each triangle is lit flat, so a low-detail model shows its facets: the light leans them toward straight up, by this share. Snow still reads the true slope.
+    f = vec4(light(a, normalize(mix(n, vec3(0.0, 0.0, 1.0), facetSoft)), 0.0), fade);
 }
 """
 
