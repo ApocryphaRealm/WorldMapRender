@@ -96,6 +96,7 @@ def read_plugin(path, target_lower):
 
 
 parents = {}
+water_levels = {}  # world's editor ID, lower case: its default water height; the last plugin wins
 
 
 def walk(d, p, end, form, cur, names, out, target):
@@ -127,6 +128,8 @@ def walk(d, p, end, form, cur, names, out, target):
             for t, s in subs(body):
                 if t == b"EDID":
                     names[form(fid)] = s.rstrip(b"\0").decode("latin1").lower()
+                elif t == b"DNAM" and len(s) >= 8 and form(fid) in names:
+                    water_levels[names[form(fid)]] = struct.unpack_from("<f", s, 4)[0]
                 elif t == b"WNAM" and len(s) == 4:
                     # a walled city's own worldspace: its markers stand on the parent's map, in the parent's coordinates
                     parents[form(fid)] = names.get(form(struct.unpack_from("<I", s)[0]))

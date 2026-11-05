@@ -22,6 +22,8 @@ from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import lanterns as lanterns_mod  # noqa: E402
+import lights as lights_mod  # noqa: E402
 import markers as markers_mod  # noqa: E402
 import nifread  # noqa: E402
 import nifwrite  # noqa: E402
@@ -118,8 +120,8 @@ def table_line(edid, rect, cfg):
     wfar = min(wfar, (sx1 - sx0))  # never wider than the sheet: the view stays on the map
     wfar = max(wfar, WNEAR * 1.5)
     hmax = max(HMIN + 40000.0, wfar / 2.0 - CLOSEST + HMIN)
-    return "%s %.1f %.1f %.1f %.1f %.1f 1 %d %d %d %d %d %d 0.0 0.0 0.0 %s %.1f %.1f %.1f %.1f" % (
-        edid, SHEET_Z, HMIN, hmax, wfar, WNEAR, usable[0], usable[1], x0, y1, x1, y0, cfg.get("onamz", 184072.96875), sx0, sx1, sy0, sy1)
+    return "%s %.1f %.1f %.1f %.1f %.1f %d %d %d %d %d %d %d 0.0 0.0 0.0 %s %.1f %.1f %.1f %.1f" % (
+        edid, SHEET_Z, HMIN, hmax, wfar, WNEAR, 0 if cfg.get("single") else 1, usable[0], usable[1], x0, y1, x1, y0, cfg.get("onamz", 184072.96875), sx0, sx1, sy0, sy1)
 
 
 def auto_rect(edid, mk):
@@ -171,9 +173,10 @@ def resolve_host(cfg, rect, edid):
 
 
 def build_world(edid, cfg, out, ppc, tc, preview):
-    wd = render_map.World(edid, winter=cfg.get("winter", True))
+    wd = render_map.world_from_config(edid, cfg)
     t0 = time.time()
     mk = markers_mod.collect(edid)
+    t_begin = time.time()
     rect = auto_rect(edid, mk) if cfg["rect"] == "auto" else tuple(cfg["rect"])
     if not rect:
         raise SystemExit("no land found for %s" % edid)
@@ -182,7 +185,11 @@ def build_world(edid, cfg, out, ppc, tc, preview):
     use = min(ppc, MAX_SIDE // max(w, h))
     # both sides must be multiples of four cells' worth of block compression
     t1 = time.time()
-    day, night, stats, timing = render_map.render(wd, rect, use, mk)
+    # "sea": true in worlds.json for a land with an open sea; elsewhere the default water level would flood its valleys
+    sea = markers_mod.water_levels.get(edid.lower()) if cfg.get("sea", False) else None
+    if sea is not None and sea < -1.0e6:
+        sea = None
+    day, night, stats, timing = render_map.render(wd, rect, use, mk, sea, lanterns_mod.collect(edid), lights_mod.collect(edid) if cfg.get("lights") else ())
     t2 = time.time()
     day = fade_edges(day.copy(), use * 1.5, EDGE_DAY)
     night = fade_edges(night.copy(), use * 1.5, EDGE_NIGHT)
@@ -194,8 +201,11 @@ def build_world(edid, cfg, out, ppc, tc, preview):
             im = Image.fromarray(img)
             scale = max(1, max(im.size) // 2048)
             im.reduce(scale).save(os.path.join(preview, "%s-%s.png" % (low, tag)))
-    to_dds(day, os.path.join(tdir, low + ".dds"), tc)
-    to_dds(night, os.path.join(tdir, low + "_n.dds"), tc)
+    # "single": "night" or "day": a land with no sky cycle has one picture, and the plugin never swaps it
+    single = cfg.get("single")
+    to_dds(night if single == "night" else day, os.path.join(tdir, low + ".dds"), tc)
+    if not single:
+        to_dds(night, os.path.join(tdir, low + "_n.dds"), tc)
     t3 = time.time()
     # the mesh: its numbers are relative to the host chunk's corner
     hx, hy = resolve_host(cfg, rect, edid)
@@ -210,7 +220,7 @@ def build_world(edid, cfg, out, ppc, tc, preview):
     for s in SEASONS:
         with open(os.path.join(mdir, "%s.32.%d.%d%s.btr" % (low, hx, hy, s)), "wb") as f:
             f.write(data)
-    return dict(world=edid, rect=list(rect), host=[hx, hy], size=[day.shape[1], day.shape[0]], ppc=use, markers=len(mk), stats={k: v for k, v in stats.items() if k != "missing"}, missing=stats["missing"],
+    return dict(world=edid, sea=sea, rect=list(rect), host=[hx, hy], size=[day.shape[1], day.shape[0]], ppc=use, markers=len(mk), stats={k: v for k, v in stats.items() if k != "missing"}, missing=stats["missing"],
                 timing=dict(render=round(t2 - t1, 1), markers=round(t1 - t0, 1), compress=round(t3 - t2, 1)), dds_mb=round(os.path.getsize(os.path.join(tdir, low + ".dds")) / 1e6, 1))
 
 
@@ -238,7 +248,7 @@ def main():
         if edid not in cfg:
             sys.exit("%s is not in worlds.json" % edid)
         low = edid.lower()
-        if not args.all and not args.world and os.path.isfile(os.path.join(tdir, low + "_n.dds")):
+        if not args.all and not args.world and os.path.isfile(os.path.join(tdir, low + ".dds")):
             print("kept", edid)
             continue
         print("building", edid, flush=True)
