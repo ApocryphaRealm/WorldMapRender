@@ -1,5 +1,6 @@
 """Build one map viewer page: a big plain label, wheel zoom at the cursor, drag to pan.
 
+    make_viewer.py <mod data folder> [out folder] [old data folder]     with an old folder, a land whose picture differs also offers the old one
     make_viewer.py <mod data folder> [out folder]     the DDS pictures the game loads, full size: what zooming shows is what the game has
     make_viewer.py <folder of NN-Name-day.jpg ...> [out.html]     small pictures, embedded in one file
 
@@ -39,6 +40,15 @@ if os.path.isdir(tdir):
                 print(name, im.size, flush=True)
             entry = maps.setdefault(n, {"num": n, "name": c["name"], "pics": {}})
             entry["pics"][tag] = "full/" + name
+            old = os.path.join(sys.argv[3], "textures", "terrain", "worldmaprender", f) if len(sys.argv) > 3 else None
+            if old and os.path.isfile(old) and (os.path.getsize(old) != os.path.getsize(src) or open(old, "rb").read() != open(src, "rb").read()):
+                oldname = name[:-4] + "-installed.jpg"
+                dest = os.path.join(root, "full", oldname)
+                if not os.path.isfile(dest) or os.path.getmtime(dest) < os.path.getmtime(old):
+                    im = Image.open(old)
+                    im.load()
+                    im.convert("RGB").save(dest, quality=93, subsampling=0)
+                entry["pics"]["installed " + tag] = "full/" + oldname
 else:
     out = sys.argv[2] if len(sys.argv) > 2 else os.path.join(folder, "maps-viewer.html")
     for p in sorted(glob.glob(os.path.join(folder, "*.jpg"))):
@@ -69,16 +79,16 @@ button.on{background:var(--text);color:#000;border-color:var(--text)}
 const MAPS=__DATA__;
 const top_=document.getElementById('top'),label=document.getElementById('label'),view=document.getElementById('view'),img=document.getElementById('img'),hint=document.getElementById('hint');
 let cur=0,tod='day',s=1,x=0,y=0;
-function apply(){img.style.transform=`translate(${x}px,${y}px) scale(${s})`;hint.textContent=`${Math.round(s*100)}%  ·  scroll to zoom at the cursor  ·  drag to move  ·  double-click to fit  ·  arrow keys change map  ·  N day or night`;}
+function apply(){img.style.transform=`translate(${x}px,${y}px) scale(${s})`;hint.textContent=`${Math.round(s*100)}%  ·  scroll to zoom at the cursor  ·  drag to move  ·  double-click to fit  ·  arrow keys change map  ·  N next picture`;}
 function fit(){const r=view.getBoundingClientRect();s=Math.min(r.width/img.naturalWidth,r.height/img.naturalHeight);x=(r.width-img.naturalWidth*s)/2;y=(r.height-img.naturalHeight*s)/2;apply();}
 function layout(){view.style.top=(top_.offsetHeight+label.offsetHeight)+'px';}
 function show(i,keep){cur=(i+MAPS.length)%MAPS.length;const m=MAPS[cur];if(!m.pics[tod])tod=Object.keys(m.pics)[0];
  label.innerHTML=`${m.num}. ${m.name}<small>${tod}</small>`;
  [...top_.children].forEach((b,j)=>b.classList.toggle('on',j===cur));
- nb.disabled=Object.keys(m.pics).length<2;nb.textContent=tod==='day'?'Show night':'Show day';
+ const ks=Object.keys(m.pics);nb.disabled=ks.length<2;nb.textContent='Next picture: '+ks[(ks.indexOf(tod)+1)%ks.length];
  layout();img.onload=()=>{if(!keep)fit();else apply();};img.src=m.pics[tod];}
 MAPS.forEach((m,i)=>{const b=document.createElement('button');b.textContent=m.num+'. '+m.name;b.onclick=()=>show(i);top_.appendChild(b);});
-const nb=document.createElement('button');nb.onclick=()=>{tod=tod==='day'?'night':'day';show(cur,true);};
+const nb=document.createElement('button');nb.onclick=()=>{const ks=Object.keys(MAPS[cur].pics);tod=ks[(ks.indexOf(tod)+1)%ks.length];show(cur,true);};
 const holder=document.createElement('span');
 view.addEventListener('wheel',e=>{e.preventDefault();const r=view.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top,f=Math.exp(-e.deltaY*0.0016),n=Math.min(40,Math.max(0.02,s*f));x=px-(px-x)*n/s;y=py-(py-y)*n/s;s=n;apply();},{passive:false});
 let d=null;view.addEventListener('pointerdown',e=>{d={a:e.clientX,b:e.clientY,x,y};view.classList.add('drag');view.setPointerCapture(e.pointerId);});
