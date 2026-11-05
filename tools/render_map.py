@@ -1442,8 +1442,6 @@ def render(world, rect, ppc, markers=(), sea=None, lanterns=(), lights=()):
         sc.draw_terrain_records()
     else:
         sc.draw_terrain(tiles)
-    if world.placed:
-        sc.draw_children()
     t2 = time.time()
     sc.draw_water(tiles, sea)
     if world.road_meshes and sc.placed_refs:
