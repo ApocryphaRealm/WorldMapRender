@@ -14,7 +14,8 @@ import zlib
 
 MODS = r"D:\Modlists\Njordlinger\mods"
 STOCK = r"D:\Modlists\Njordlinger\Stock Game\Data"
-PROFILE = r"D:\Modlists\Njordlinger\profiles\Njordlinger"
+# The one place that says which profile's load order every tool reads. Set WMR_PROFILE to read another.
+PROFILE = os.path.join(r"D:\Modlists\Njordlinger\profiles", os.environ.get("WMR_PROFILE", "Njordlinger"))
 
 
 def active_plugins():

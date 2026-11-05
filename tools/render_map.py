@@ -33,7 +33,7 @@ import nifread  # noqa: E402
 CELL = 4096.0
 ZMIN, ZMAX = -60000.0, 120000.0
 MODS = r"D:\Modlists\Njordlinger\mods"
-PROFILE = r"D:\Modlists\Njordlinger\profiles\Njordlinger\modlist.txt"
+PROFILE = os.path.join(r"D:\Modlists\Njordlinger\profiles", os.environ.get("WMR_PROFILE", "Njordlinger"), "modlist.txt")
 MARKER_POOLS = False  # True brings back a pool of light at settlement map markers. Off: they show sites with no lights and give away undiscovered places.
 
 VS = """
