@@ -323,6 +323,10 @@ namespace
 		float lastD = 0.0f;
 		int   still = 0;
 		float lastLoggedD = 0.0f;
+		float zoomLow = 0.0f;
+		float zoomHigh = 0.0f;
+		int   heldHeight = 0;
+		bool  loggedRange = false;
 		bool  tintSet = false;
 		bool  framed[2] = { false, false };
 	} g;
@@ -445,7 +449,11 @@ namespace
 		if (data.worldSpace->flags.any(RE::TESWorldSpace::Flag::kNoSky)) { ClearFog(); }
 
 		const float t = std::clamp(std::log(d / d0) / std::log(d1 / d0), 0.0f, 1.0f);
-		const float width = world->wnear * std::pow(world->wfar / world->wnear, t);
+		const auto& zoomFrustum = camera ? camera->GetRuntimeData2().viewFrustum : RE::NiFrustum{};
+		const float screen = zoomFrustum.fRight != 0.0f ? zoomFrustum.fTop / zoomFrustum.fRight : 0.5625f;
+		// On any screen shape, full zoom-out never asks for more than the limits hold: the picture always fills the view.
+		const float widest = world->sheet[1] > world->sheet[0] ? (std::min)(world->sheet[1] - world->sheet[0], (world->sheet[3] - world->sheet[2]) / screen) : world->wfar;
+		const float width = (std::min)(world->wnear * std::pow(world->wfar / world->wnear, t), widest);
 		const float half = (std::min)(width / (2.0f * d), 1.0f);
 		const float fov = 2.0f * std::atan(half) * 57.29578f;
 
@@ -484,6 +492,11 @@ namespace
 				fit(flight->currentPosition);
 				fit(flight->zoomDestination);
 				fit(flight->zoomOrigin);
+				if (flight->zoomDestination.z > world->hmax)
+				{
+					logger::info("Flight was going to height {}, above this land's {}", flight->zoomDestination.z, world->hmax);
+					flight->zoomDestination.z = world->hmax;
+				}
 			}
 		}
 		if (!g_off.clamp && settled && world->sheet[1] > world->sheet[0])
@@ -492,6 +505,26 @@ namespace
 			const float aspect = fr.fRight != 0.0f ? fr.fTop / fr.fRight : 0.5625f;
 			auto&       offset = settled->currentPositionScrollOffset;
 			auto&       base = settled->currentPosition;
+			// Some lands' opening flight ends far above their limit, and the wheel then does nothing (log of 06:36: Skuldafn and five others at
+			// height 392000 against a limit of 282000). Why those lands is not known yet. Bring the camera back under its limit.
+			if (!g.loggedRange)
+			{
+				g.loggedRange = true;
+				logger::info("Zoom range {}: limits {} to {}, width {} to {}; camera at {}, state height {} offset {}, limits held {} to {}", data.worldSpace->editorID.c_str(), world->hmin, world->hmax,
+					world->wnear, world->wfar, camZ, base.z, offset.z, data.worldSpace->worldMapData.cameraData.minHeight, data.worldSpace->worldMapData.cameraData.maxHeight);
+			}
+			if (camZ > world->hmax + 1000.0f && base.z + offset.z > world->hmax)
+			{
+				if (++g.heldHeight == 1) { logger::warn("Camera at {} above the limit {}: state height {} offset {}, bringing it down", camZ, world->hmax, base.z, offset.z); }
+				base.z = world->hmax - offset.z;
+			}
+			else if (camZ > world->hmax + 1000.0f && g.heldHeight == 0)
+			{
+				g.heldHeight = -1;
+				logger::warn("Camera at {} above the limit {}, but state height {} offset {} do not say so", camZ, world->hmax, base.z, offset.z);
+			}
+			if (g.zoomLow == 0.0f || d < g.zoomLow) { g.zoomLow = d; }
+			if (d > g.zoomHigh) { g.zoomHigh = d; }
 			if (!g_off.stick && (std::fabs(g_stickX) > 0.15f || std::fabs(g_stickY) > 0.15f))
 			{
 				const float step = 0.7f * width * std::clamp(a_interval, 0.0f, 0.05f);
@@ -648,7 +681,11 @@ namespace
 				fov.firstPersonFOV = g.savedFirst;
 				g_realWorldFOV = g.savedWorld;
 				g_realFirstFOV = g.savedFirst;
-				logger::info("Map closed, FOV back to {} {}", g.savedWorld, g.savedFirst);
+				logger::info("Map closed, FOV back to {} {}; settled distance from the sheet ran {} to {}", g.savedWorld, g.savedFirst, g.zoomLow, g.zoomHigh);
+				g.zoomLow = 0.0f;
+				g.zoomHigh = 0.0f;
+				g.heldHeight = 0;
+				g.loggedRange = false;
 			}
 			return RE::BSEventNotifyControl::kContinue;
 		}

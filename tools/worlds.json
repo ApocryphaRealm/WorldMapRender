@@ -1,5 +1,5 @@
 {
-    "_comment": "Lands that get a rendered map. rect: cells x0 y0 x1 y1 of the sheet, or auto (the land above water, the markers and a margin). host: the level 32 LOD chunk the sheet's mesh is named after, or auto (the chunk under the middle of the sheet). onamz: the map offset height. usable: the map data's usable size. Other lands keep their paper map or their 3D map. winter: false for lands the permanent winter does not reach, which then keep their own colours. surround: true blends the land beyond the markers into smooth snow and rock, fading its object LOD. soften: 0 to 1 for lands whose mountain LOD is coarser than Skyrim's, measured in PLAN.md. road_extra: more landscape textures to draw as paths, for a land whose paths are painted in plain dirt. sea: true for a land with an open sea. direct: terrain and buildings from the land's records, not LOD. ambient, tone: the day light. placed: also draw the structures the land's references place, from their full models. single: day or night: one picture, for a land with no sky cycle. lights: true marks every light and glowing plant the references place. water: shallow and deep colours, day then night. water_style 1: Apocrypha. placed all: rock as well. land_soft: shade terrain from the map's heights, and lay snow on gentle dark ground. hide: cell rectangles of filler terrain to leave out. placed all: every structure and rock from its full model, instead of object LOD. ceiling: for a cave land, leave out what stands this far above the floor. true_coast: false takes the coast from the LOD's heights instead of the land's records. terrain_lines: true also traces the terrain's edges, as the approved Skyrim map was drawn. keep: the owner approved this land's picture; a rerun leaves it unless the land is named with --world. ppc: this land's sheet size in pixels a cell. tile_ppc: tiles over the sheet at this size. alt_textures: read the texture swaps on model records. road_meshes: road models drawn as flat stone in road_colour. road_paint: painted roads take this colour rather than their texture's. all_water: the sea covers all its ground. relief: strength of the ground's shading. flatten: x0 y0 x1 y1 z, filler cells levelled. edge_cells: width of the sheet's soft edge. void_below: terrain at this height is the land's unused flat ground, and melts into the surround.",
+    "_comment": "Lands that get a rendered map. rect: cells x0 y0 x1 y1 of the sheet, or auto (the land above water, the markers and a margin). host: the level 32 LOD chunk the sheet's mesh is named after, or auto (the chunk under the middle of the sheet). onamz: the map offset height. usable: the map data's usable size. Other lands keep their paper map or their 3D map. winter: false for lands the permanent winter does not reach, which then keep their own colours. surround: true blends the land beyond the markers into smooth snow and rock, fading its object LOD. soften: 0 to 1 for lands whose mountain LOD is coarser than Skyrim's, measured in PLAN.md. road_extra: more landscape textures to draw as paths, for a land whose paths are painted in plain dirt. sea: true for a land with an open sea. direct: terrain and buildings from the land's records, not LOD. ambient, tone: the day light. placed: also draw the structures the land's references place, from their full models. single: day or night: one picture, for a land with no sky cycle. lights: true marks every light and glowing plant the references place. water: shallow and deep colours, day then night. water_style 1: Apocrypha. placed all: rock as well. land_soft: shade terrain from the map's heights, and lay snow on gentle dark ground. hide: cell rectangles of filler terrain to leave out. placed all: every structure and rock from its full model, instead of object LOD. ceiling: for a cave land, leave out what stands this far above the floor. true_coast: false takes the coast from the LOD's heights instead of the land's records. terrain_lines: true also traces the terrain's edges, as the approved Skyrim map was drawn. keep: the owner approved this land's picture; a rerun leaves it unless the land is named with --world. ppc: this land's sheet size in pixels a cell. tile_ppc: tiles over the sheet at this size. alt_textures: read the texture swaps on model records. road_meshes: road models drawn as flat stone in road_colour. road_paint: painted roads take this colour rather than their texture's. all_water: the sea covers all its ground. relief: strength of the ground's shading. flatten: x0 y0 x1 y1 z, filler cells levelled. edge_cells: width of the sheet's soft edge. void_below: terrain at this height is the land's unused flat ground, and melts into the surround. retouch: keep = outlines in cells, everything outside them, or inside its remove outlines, becomes smooth ground; cosmetic, for what the player cannot reach.",
     "Tamriel": {
         "name": "Skyrim",
         "rect": [
@@ -86,7 +86,71 @@
         "ceiling": 1500.0,
         "ppc": 256,
         "alt_textures": true,
-        "land_soft": 0.4
+        "land_soft": 0.4,
+        "retouch": {
+            "remove": [
+                [
+                    [
+                        -2.1,
+                        4.6
+                    ],
+                    [
+                        -1.7,
+                        4.6
+                    ],
+                    [
+                        -1.7,
+                        1.0
+                    ],
+                    [
+                        -2.1,
+                        1.0
+                    ]
+                ],
+                [
+                    [
+                        5.5,
+                        5.0
+                    ],
+                    [
+                        6.3,
+                        5.0
+                    ],
+                    [
+                        6.3,
+                        3.9
+                    ],
+                    [
+                        5.75,
+                        3.9
+                    ]
+                ],
+                [
+                    [
+                        0.0,
+                        -2.35
+                    ],
+                    [
+                        1.15,
+                        -2.35
+                    ],
+                    [
+                        1.15,
+                        -3.1
+                    ],
+                    [
+                        0.0,
+                        -3.1
+                    ]
+                ]
+            ],
+            "feather": 0.2,
+            "ground_at": [
+                8.0,
+                -4.0
+            ],
+            "mottle": 0.0
+        }
     },
     "DLC01FalmerValley": {
         "name": "Forgotten Vale",
@@ -179,7 +243,30 @@
             0.4,
             0.38,
             0.36
-        ]
+        ],
+        "retouch": {
+            "keep": [
+                [
+                    [
+                        -3.0,
+                        31.0
+                    ],
+                    [
+                        63.0,
+                        31.0
+                    ],
+                    [
+                        63.0,
+                        64.0
+                    ],
+                    [
+                        -3.0,
+                        64.0
+                    ]
+                ]
+            ],
+            "feather": 0.7
+        }
     },
     "Sovngarde": {
         "name": "Sovngarde",
@@ -199,7 +286,61 @@
         "land_soft": 0.0,
         "ppc": 256,
         "alt_textures": true,
-        "edge_cells": 2.5
+        "edge_cells": 2.5,
+        "placed": "all",
+        "retouch": [
+            {
+                "remove": [
+                    [
+                        [
+                            0.0,
+                            26.55
+                        ],
+                        [
+                            4.5,
+                            26.55
+                        ],
+                        [
+                            4.05,
+                            24.84
+                        ],
+                        [
+                            0.0,
+                            24.84
+                        ]
+                    ]
+                ],
+                "feather": 0.4,
+                "ground_at": [
+                    10.0,
+                    28.0
+                ],
+                "mottle": 0.0
+            },
+            {
+                "keep": [
+                    [
+                        [
+                            1.65,
+                            31.8
+                        ],
+                        [
+                            28.95,
+                            31.8
+                        ],
+                        [
+                            28.95,
+                            4.05
+                        ],
+                        [
+                            1.65,
+                            4.05
+                        ]
+                    ]
+                ],
+                "feather": 0.5
+            }
+        ]
     },
     "DLC1HunterHQWorld": {
         "name": "Dayspring Canyon",
@@ -286,7 +427,156 @@
                 -3.9,
                 -2048.0
             ]
-        ]
+        ],
+        "retouch": {
+            "keep": [
+                [
+                    [
+                        41.36,
+                        -3.44
+                    ],
+                    [
+                        43.76,
+                        -2.6
+                    ],
+                    [
+                        45.92,
+                        -3.56
+                    ],
+                    [
+                        47.6,
+                        -3.08
+                    ],
+                    [
+                        48.8,
+                        -2.72
+                    ],
+                    [
+                        50.72,
+                        -3.68
+                    ],
+                    [
+                        52.4,
+                        -5.12
+                    ],
+                    [
+                        54.56,
+                        -6.68
+                    ],
+                    [
+                        55.4,
+                        -8.24
+                    ],
+                    [
+                        55.47,
+                        -13.04
+                    ],
+                    [
+                        54.68,
+                        -14.0
+                    ],
+                    [
+                        55.52,
+                        -15.32
+                    ],
+                    [
+                        55.33,
+                        -17.84
+                    ],
+                    [
+                        53.36,
+                        -19.69
+                    ],
+                    [
+                        49.28,
+                        -19.69
+                    ],
+                    [
+                        47.6,
+                        -18.73
+                    ],
+                    [
+                        44.96,
+                        -18.01
+                    ],
+                    [
+                        42.8,
+                        -16.33
+                    ],
+                    [
+                        41.6,
+                        -14.6
+                    ],
+                    [
+                        41.12,
+                        -13.4
+                    ],
+                    [
+                        41.0,
+                        -11.0
+                    ],
+                    [
+                        41.12,
+                        -8.6
+                    ],
+                    [
+                        41.36,
+                        -6.2
+                    ]
+                ],
+                [
+                    [
+                        53.96,
+                        -2.24
+                    ],
+                    [
+                        55.28,
+                        -1.64
+                    ],
+                    [
+                        57.08,
+                        -2.84
+                    ],
+                    [
+                        57.68,
+                        -3.92
+                    ],
+                    [
+                        59.36,
+                        -4.4
+                    ],
+                    [
+                        60.2,
+                        -6.08
+                    ],
+                    [
+                        61.09,
+                        -8.6
+                    ],
+                    [
+                        60.85,
+                        -10.09
+                    ],
+                    [
+                        59.31,
+                        -10.57
+                    ],
+                    [
+                        57.2,
+                        -7.64
+                    ],
+                    [
+                        55.28,
+                        -5.48
+                    ],
+                    [
+                        54.08,
+                        -3.44
+                    ]
+                ]
+            ],
+            "feather": 0.4
+        }
     },
     "BSKHyorkerIsle": {
         "name": "Hjorkvild Isles",

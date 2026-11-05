@@ -18,6 +18,7 @@ import sys
 import time
 
 import numpy as np
+import retouch
 from PIL import Image
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +37,8 @@ LAND_Z = 160000.0
 HMIN = 242000.0
 CLOSEST = 56000.0
 WNEAR = 28000.0
+# Height the wheel has on every land: at about a tenth a click, some ten clicks from closest to furthest.
+ZOOM_RANGE = 100000.0
 SEASONS = ("", ".AUT", ".SPR", ".SUM", ".WIN")
 MAX_SIDE = 16384
 TEXCONV_PLACES = [
@@ -115,11 +118,13 @@ def marker_json(out, cfg):
 def table_line(edid, rect, cfg):
     x0, y0, x1, y1 = rect
     usable = cfg.get("usable", [0, 0])
-    sx0, sx1, sy0, sy1 = x0 * CELL, x1 * CELL, y0 * CELL, y1 * CELL
-    wfar = max(sx1 - sx0, (sy1 - sy0) * 16.0 / 9.0) * 1.02
-    wfar = min(wfar, (sx1 - sx0))  # never wider than the sheet: the view stays on the map
+    # The camera's limits are the picture less its soft edge, so neither the fade nor the backdrop can come into view.
+    inset = cfg.get("edge_cells", 1.5) * CELL
+    sx0, sx1, sy0, sy1 = x0 * CELL + inset, x1 * CELL - inset, y0 * CELL + inset, y1 * CELL - inset
+    # Fully zoomed out, the view fits inside those limits on both sides: a land never shows less than a screenful of picture.
+    wfar = min(sx1 - sx0, (sy1 - sy0) * 16.0 / 9.0)
     wfar = max(wfar, WNEAR * 1.5)
-    hmax = max(HMIN + 40000.0, wfar / 2.0 - CLOSEST + HMIN)
+    hmax = max(HMIN + ZOOM_RANGE, wfar / 2.0 - CLOSEST + HMIN)
     return "%s %.1f %.1f %.1f %.1f %.1f %d %d %d %d %d %d %d 0.0 0.0 0.0 %s %.1f %.1f %.1f %.1f" % (
         edid, SHEET_Z, HMIN, hmax, wfar, WNEAR, 0 if cfg.get("single") else 1, usable[0], usable[1], x0, y1, x1, y0, cfg.get("onamz", 184072.96875), sx0, sx1, sy0, sy1)
 
@@ -302,6 +307,9 @@ def build_world(edid, cfg, out, ppc, tc, preview):
         sea = None
     day, night, stats, timing = render_map.render(wd, rect, use, mk, sea, lanterns_mod.collect(edid), lights_mod.collect(edid) if cfg.get("lights") else ())
     t2 = time.time()
+    if cfg.get("retouch"):
+        day = retouch.apply(day, rect, use, cfg["retouch"])
+        night = retouch.apply(night, rect, use, cfg["retouch"])
     edge = use * cfg.get("edge_cells", 1.5)
     day = fade_edges(day.copy(), edge, EDGE_DAY)
     night = fade_edges(night.copy(), edge, EDGE_NIGHT)
@@ -336,6 +344,7 @@ def main():
     ap.add_argument("--tiles", action="store_true", help="also draw the tiles of lands with tile_ppc")
     ap.add_argument("--tiles-only", action="store_true", help="for the lands named, the tiles and mesh only: the sheet stays as it is")
     ap.add_argument("--tile-window", type=int, nargs=4, help="i0 j0 i1 j1: only these tiles, as a trial")
+    ap.add_argument("--table-only", action="store_true", help="draw nothing: rewrite the table and marker list from worlds.json")
     args = ap.parse_args()
     cfg = {k: v for k, v in json.load(open(os.path.join(HERE, "worlds.json"), encoding="utf-8")).items() if not k.startswith("_")}
     names = args.world or list(cfg)
@@ -349,7 +358,7 @@ def main():
         to_dds(im, back, tc)
     report_path = os.path.join(args.out, "..", "build-report.json")
     report = json.load(open(report_path, encoding="utf-8")) if os.path.isfile(report_path) else {}
-    for edid in names:
+    for edid in ([] if args.table_only else names):
         if edid not in cfg:
             sys.exit("%s is not in worlds.json" % edid)
         low = edid.lower()
