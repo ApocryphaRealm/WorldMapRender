@@ -206,6 +206,8 @@ def build_world(edid, cfg, out, ppc, tc, preview):
     to_dds(night if single == "night" else day, os.path.join(tdir, low + ".dds"), tc)
     if not single:
         to_dds(night, os.path.join(tdir, low + "_n.dds"), tc)
+    elif os.path.isfile(os.path.join(tdir, low + "_n.dds")):
+        os.remove(os.path.join(tdir, low + "_n.dds"))
     t3 = time.time()
     # the mesh: its numbers are relative to the host chunk's corner
     hx, hy = resolve_host(cfg, rect, edid)
