@@ -1,0 +1,9 @@
+build/
+.vs/
+wmrbuild.bat
+build-report.json
+dist/textures/
+dist/meshes/
+dist/SKSE/Plugins/FlatMapMarkersSSE.json
+dist/SKSE/Plugins/WorldMapRender.txt
+tools/__pycache__/

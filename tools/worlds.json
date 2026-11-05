@@ -1,0 +1,16 @@
+{
+    "_comment": "Lands that get a rendered map. rect: cells x0 y0 x1 y1 of the sheet, or auto (the land above water, the markers and a margin). host: the level 32 LOD chunk the sheet's mesh is named after, or auto (the chunk under the middle of the sheet). onamz: the map offset height. usable: the map data's usable size. Other lands keep their paper map or their 3D map.",
+    "Tamriel": {"name": "Skyrim", "rect": [-57, -43, 62, 51], "host": [0, 0], "onamz": 184072.96875},
+    "DLC2SolstheimWorld": {"name": "Solstheim", "rect": "auto", "host": [0, 0], "onamz": 184072.96875},
+    "Blackreach": {"name": "Blackreach", "rect": "auto", "host": [-23, -9], "onamz": 184072.96875},
+    "DLC01FalmerValley": {"name": "Forgotten Vale", "rect": "auto", "host": [-16, -13], "onamz": 184072.96875},
+    "DLC01SoulCairn": {"name": "Soul Cairn", "rect": "auto", "host": [12, 13], "onamz": 184072.96875},
+    "WyrmstoothWorld": {"name": "Wyrmstooth", "rect": "auto", "host": [0, 0], "onamz": 184072.96875},
+    "ECSSShiveringIsles": {"name": "Shivering Isles", "rect": "auto", "host": [0, 0], "onamz": 184072.96875},
+    "BSHeartland": {"name": "Cyrodiil", "rect": "auto", "host": [0, 0], "onamz": 224072.96875, "usable": [150, 150]},
+    "Sovngarde": {"name": "Sovngarde", "rect": "auto", "host": [8, 0], "onamz": 184072.96875},
+    "DLC1HunterHQWorld": {"name": "Dayspring Canyon", "rect": "auto", "host": [-1, -9], "onamz": 192264.953125},
+    "DLC2ApocryphaWorld": {"name": "Apocrypha", "rect": "auto", "host": [14, 14], "onamz": 184072.96875},
+    "SkuldafnWorld": {"name": "Skuldafn", "rect": "auto", "host": [32, -21], "onamz": 184072.96875},
+    "BSKHyorkerIsle": {"name": "Hjorkvild Isles", "rect": "auto", "host": [0, 0], "onamz": 184072.96875}
+}
