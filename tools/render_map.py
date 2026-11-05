@@ -657,7 +657,7 @@ def raw_colour_lookup(tex):
     return lookup
 
 
-def load_texture(ctx, path, mips=True, limit=0, raw=None):
+def load_texture(ctx, path, mips=True, limit=0, raw=None, wrap=True):
     im = open_dds_bytes(raw) if raw else open_dds(path)
     if im.mode != "RGBA":
         im = im.convert("RGBA")
@@ -665,7 +665,7 @@ def load_texture(ctx, path, mips=True, limit=0, raw=None):
         f = max(im.size) // limit
         im = im.reduce(max(f, 1))
     tex = ctx.texture(im.size, 4, im.tobytes())
-    tex.repeat_x = tex.repeat_y = True
+    tex.repeat_x = tex.repeat_y = wrap
     if mips:
         tex.build_mipmaps()
         tex.filter = (moderngl.LINEAR_MIPMAP_LINEAR, moderngl.LINEAR)
@@ -909,7 +909,7 @@ class Scene:
                 np_ = os.path.join(tdir, "%s.4.%d.%d%s_n.dds" % (wd.lower, tx, ty, second))
             if not (os.path.isfile(dp) and os.path.isfile(np_)):
                 continue
-            t0, t1 = load_texture(c, dp), load_texture(c, np_)
+            t0, t1 = load_texture(c, dp, wrap=False), load_texture(c, np_, wrap=False)
             vao, vb, ib = self._mesh(self.land, sh.verts, sh.uvs, None, sh.tris, (tx * CELL, ty * CELL, 0.0))
             t0.use(0)
             t1.use(1)

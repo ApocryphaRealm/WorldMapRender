@@ -15,10 +15,10 @@
         "onamz": 184072.96875,
         "surround": true,
         "sea": true,
-        "true_coast": false,
-        "terrain_lines": true,
-        "keep": true,
-        "tile_ppc": 256
+        "tile_ppc": 256,
+        "placed": "all",
+        "land_soft": 0.8,
+        "alt_textures": true
     },
     "DLC2SolstheimWorld": {
         "name": "Solstheim",

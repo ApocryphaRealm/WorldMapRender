@@ -25,6 +25,7 @@
 #include <algorithm>
 #include <charconv>
 #include <cmath>
+#include <cstring>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -158,6 +159,12 @@ namespace
 			if (!w) { continue; }
 			auto& m = form->worldMapData;
 			auto& o = form->worldMapOffsetData;
+			// A land with a picture of its own is its own map, whatever the winning record says. Only the map flag goes: its land, LOD and water still come from its parent.
+			if (form->parentWorld && form->parentUseFlags.any(RE::TESWorldSpace::ParentUseFlag::kUseMapData))
+			{
+				form->parentUseFlags.reset(RE::TESWorldSpace::ParentUseFlag::kUseMapData);
+				if (a_log) { logger::info("{} now uses its own map, not {}", form->editorID.c_str(), form->parentWorld->editorID.c_str()); }
+			}
 			if (a_log)
 			{
 				logger::info("{} was min {} max {} pitch {} onam {} {} {} {}", form->editorID.c_str(), m.cameraData.minHeight, m.cameraData.maxHeight,
@@ -210,7 +217,7 @@ namespace
 		auto material = static_cast<RE::BSEffectShaderMaterial*>(effect->GetBaseMaterial());
 		if (!material || !material->sourceTexturePath.c_str()) { return 0; }
 		std::string path = material->sourceTexturePath.c_str();
-		if (Lower(path).find(kSheetKey) == std::string::npos) { return 0; }
+		if (Lower(path).find(kSheetKey) == std::string::npos || !a_object->name.c_str() || std::strcmp(a_object->name.c_str(), "map sheet") != 0) { return 0; }
 		g_sheetZ = a_object->world.translate.z;
 		g_sheet = a_object;
 		if (a_night) { path.insert(path.size() - 4, "_n"); }
@@ -239,6 +246,7 @@ namespace
 		int   still = 0;
 		float lastLoggedD = 0.0f;
 		bool  tintSet = false;
+		bool  framed[2] = { false, false };
 	} g;
 
 	// The player's own field of view. Other plugins handle the map's open event too (FWMF's BakaWorldMapFOV raises it to 110
@@ -290,7 +298,29 @@ namespace
 		SetSetting(minPitch, "fMapWorldMinPitch:MapMenu", 0.0f);
 	}
 
-	void Frame(RE::MapMenu* a_menu)
+	float g_stickX = 0.0f, g_stickY = 0.0f;  // the right stick, read from input events; it pans now that it no longer tilts
+
+	class StickSink : public RE::BSTEventSink<RE::InputEvent*>
+	{
+	public:
+		RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>*) override
+		{
+			if (!a_event || !g.open) { return RE::BSEventNotifyControl::kContinue; }
+			for (auto* e = *a_event; e; e = e->next)
+			{
+				if (e->GetEventType() != RE::INPUT_EVENT_TYPE::kThumbstick) { continue; }
+				auto* stick = static_cast<RE::ThumbstickEvent*>(e);
+				if (stick->idCode == RE::ThumbstickEvent::InputTypes::kRightThumbstick)
+				{
+					g_stickX = stick->xValue;
+					g_stickY = stick->yValue;
+				}
+			}
+			return RE::BSEventNotifyControl::kContinue;
+		}
+	};
+
+	void Frame(RE::MapMenu* a_menu, float a_interval)
 	{
 		if (!a_menu) { return; }
 		auto& data = *a_menu->GetRuntimeData2();
@@ -342,15 +372,60 @@ namespace
 		const float fov = 2.0f * std::atan(half) * 57.29578f;
 
 		// Keep the whole screen on the sheet, so the view never leaves the map.
+		if (world->sheet[1] > world->sheet[0])
+		{
+			const float cx = (world->sheet[0] + world->sheet[1]) / 2.0f, cy = (world->sheet[2] + world->sheet[3]) / 2.0f;
+			const auto  fit = [&](RE::NiPoint3& a_p) {
+				a_p.x = std::clamp(a_p.x, world->sheet[0], world->sheet[1]);
+				a_p.y = std::clamp(a_p.y, world->sheet[2], world->sheet[3]);
+			};
+			// The camera opens over the player's own coordinates, which for another land can be far off its sheet. It looks at the state's
+			// position while the scroll offset moves it, so a clamp through the offset alone turned the whole view (seen as a skewed corner
+			// of the map, whenever the player stood outside that land's bounds). So the position itself goes onto the sheet, centred at first.
+			for (int i = 0; i < 2; ++i)
+			{
+				auto* state = data.camera.unk68[i].get();
+				if (!state) { continue; }
+				auto& p = state->currentPosition;
+				if (!g.framed[i])
+				{
+					g.framed[i] = true;
+					if (p.x < world->sheet[0] || p.x > world->sheet[1] || p.y < world->sheet[2] || p.y > world->sheet[3])
+					{
+						logger::info("Camera opened off this land at {} {}, centring it", p.x, p.y);
+						p.x = cx;
+						p.y = cy;
+						state->currentPositionScrollOffset.x = 0.0f;
+						state->currentPositionScrollOffset.y = 0.0f;
+					}
+				}
+				fit(p);
+			}
+			if (auto* flight = data.camera.unk80.get())
+			{
+				fit(flight->currentPosition);
+				fit(flight->zoomDestination);
+				fit(flight->zoomOrigin);
+			}
+		}
 		if (settled && world->sheet[1] > world->sheet[0])
 		{
 			const auto& fr = camera ? camera->GetRuntimeData2().viewFrustum : RE::NiFrustum{};
 			const float aspect = fr.fRight != 0.0f ? fr.fTop / fr.fRight : 0.5625f;
 			auto&       offset = settled->currentPositionScrollOffset;
-			const auto& base = settled->currentPosition;
+			auto&       base = settled->currentPosition;
+			if (std::fabs(g_stickX) > 0.15f || std::fabs(g_stickY) > 0.15f)
+			{
+				const float step = 0.7f * width * std::clamp(a_interval, 0.0f, 0.05f);
+				base.x += g_stickX * step;
+				base.y += g_stickY * step;
+			}
 			const auto  inside = [](float a_at, float a_lo, float a_hi, float a_half) {
 				return a_hi - a_lo <= a_half * 2.0f ? (a_lo + a_hi) / 2.0f : std::clamp(a_at, a_lo + a_half, a_hi - a_half);
 			};
+			// the position first, so the offset stays small and the view stays straight down
+			base.x = inside(base.x, world->sheet[0], world->sheet[1], width / 2.0f);
+			base.y = inside(base.y, world->sheet[2], world->sheet[3], width / 2.0f * aspect);
 			offset.x = inside(base.x + offset.x, world->sheet[0], world->sheet[1], width / 2.0f) - base.x;
 			offset.y = inside(base.y + offset.y, world->sheet[2], world->sheet[3], width / 2.0f * aspect) - base.y;
 		}
@@ -433,7 +508,7 @@ namespace
 	{
 		static void Thunk(RE::MapMenu* a_menu, float a_interval, std::uint32_t a_time)
 		{
-			Frame(a_menu);
+			Frame(a_menu, a_interval);
 			Original(a_menu, a_interval, a_time);
 		}
 		static inline REL::Relocation<decltype(Thunk)> Original;
@@ -471,6 +546,7 @@ namespace
 			else if (!a_event->opening && g.open)
 			{
 				g.open = false;
+				g_stickX = g_stickY = 0.0f;
 				mapstate::g.open = false;
 				Tiles::Close();
 				g_sheet = nullptr;
@@ -503,6 +579,8 @@ namespace
 			static MenuSink sink;
 			if (auto ui = RE::UI::GetSingleton()) { ui->AddEventSink<RE::MenuOpenCloseEvent>(&sink); }
 			else { logger::error("no UI singleton at data loaded; the map camera will not run"); }
+			static StickSink stick;
+			if (auto* input = RE::BSInputDeviceManager::GetSingleton()) { input->AddEventSink<RE::InputEvent*>(&stick); }
 			REL::Relocation<std::uintptr_t> vtable{ RE::VTABLE_MapMenu[0] };
 			AdvanceHook::Original = vtable.write_vfunc(0x5, AdvanceHook::Thunk);
 			logger::info("Ready");
