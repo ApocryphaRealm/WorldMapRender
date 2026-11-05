@@ -305,7 +305,8 @@ void main() {
     } else if (useTrue == 1) {
         // The land's own records decide the coast. The LOD's sea bed wanders around the water line in cells with little or no
         // land data, in fans of triangles, and those were the geometric shapes in the sea.
-        d = level - texture(trueHeight, gl_FragCoord.xy / canvas).r;
+        // A frozen shore creeps a little up the bank, over the dark wet ground the LOD paints at the water line: those were black crescents.
+        d = level - texture(trueHeight, gl_FragCoord.xy / canvas).r + (winter > 0.5 ? 60.0 : 0.0);
         if (d <= 0.0) discard;
         drawAt = max(level, h0 + 1.0);
     } else if (d <= 0.0) discard;
@@ -1095,6 +1096,7 @@ class Scene:
         wd = self.world
         grow = CELL
         quads = []
+        triangles = []
         for (tx, ty) in tiles:
             base = os.path.join(MODS, "xLODGen Output", "meshes", "terrain", wd.folder, "%s.4.%d.%d" % (wd.lower, tx, ty))
             p = base + ".btr"
@@ -1107,7 +1109,10 @@ class Scene:
                 if sh.name.lower() == "land" or sh.tris is None or not len(sh.tris):
                     continue
                 v = sh.verts
-                quads.append((v[:, 0].min() + ox, v[:, 0].max() + ox, v[:, 1].min() + oy, v[:, 1].max() + oy, float(v[:, 2].mean())))
+                # One shape holds a tile's water, and need not fill the tile: each triangle stands for itself, or a whole tile floods.
+                for tri in v[sh.tris]:
+                    quads.append((tri[:, 0].min() + ox, tri[:, 0].max() + ox, tri[:, 1].min() + oy, tri[:, 1].max() + oy, float(tri[:, 2].mean())))
+                triangles.append(np.column_stack([v[sh.tris].reshape(-1, 3)[:, 0] + ox, v[sh.tris].reshape(-1, 3)[:, 1] + oy, v[sh.tris].reshape(-1, 3)[:, 2]]).astype("f4"))
                 self.stats["water_tris"] += len(sh.tris)
         if not quads and sea is None:
             return
@@ -1123,7 +1128,7 @@ class Scene:
         self.level_fb.use()
         passes = []
         if quads:
-            passes += [(0.0, batch(quads, 0.0)), (0.5, batch(quads, grow))]
+            passes += [(0.0, np.concatenate(triangles).ravel()), (0.5, batch(quads, grow))]
         if sea is not None:
             X0, Y0, X1, Y1 = (v * CELL for v in self.rect_cells)
             passes.append((1.0, batch([(X0, X1, Y0, Y1, sea)], 0.0)))
@@ -1151,6 +1156,7 @@ class Scene:
             hh, _, cells = land_direct.land_images(wd.id, tuple(int(v) for v in self.rect_cells), lambda f: None, -50000.0)
             self.stats["coast_cells"] = cells
             if cells:
+                hh = soften_coast(hh)
                 true_tex = c.texture((hh.shape[1], hh.shape[0]), 1, hh[::-1].tobytes(), dtype="f4")
                 true_tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
                 true_tex.repeat_x = true_tex.repeat_y = False
@@ -1393,6 +1399,18 @@ class Scene:
         raw = col.read()
         a = np.frombuffer(raw, dtype=np.uint8).reshape(self.size[1], self.size[0], 4)[::-1, :, :3]
         return a
+
+
+def soften_coast(hh, passes=6):
+    """Round the shore's contours, leaving cells with no land alone (they hold a very low fill height)."""
+    good = hh > -40000.0
+    a = np.where(good, hh, 0.0).astype("f4")
+    w = good.astype("f4")
+    for _ in range(passes):
+        for axis in (0, 1):
+            a = (np.roll(a, 1, axis) + 2 * a + np.roll(a, -1, axis)) / 4
+            w = (np.roll(w, 1, axis) + 2 * w + np.roll(w, -1, axis)) / 4
+    return np.where(good, a / np.maximum(w, 1e-3), hh).astype("f4")
 
 
 def world_from_config(edid, c):
