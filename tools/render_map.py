@@ -97,12 +97,14 @@ uniform float upp;
 uniform float roadsOn;
 uniform float relief;
 uniform float voidBelow;
+uniform vec3 landColour;  // above 0: the ground keeps its pattern but not its colour, and no brighter than this; for a cave, whose LOD ground is bare dirt
 uniform float landSoft;  // 0 on Skyrim. Above it, shading comes from the map's heights: the LOD's normal maps ring on gentle hills
 in vec3 vW; in vec2 vUV; in vec4 vC;
 out vec4 f;
 """ + LIGHT + """
 void main() {
     vec3 a = texture(diffuse, vUV).rgb;
+    if (landColour.g > 0.0) a = landColour * (0.8 + 0.4 * min(dot(a, vec3(0.333)), 0.5));
     vec3 t = texture(normalmap, vUV).rgb * 2.0 - 1.0;
     vec3 n = normalize(vec3(t.r, t.b, t.g));  // the LOD normal maps store X, Z, Y
     n = normalize(n);
@@ -784,6 +786,7 @@ class Scene:
         self.obj["snowLo"].value, self.obj["snowHi"].value = 0.62, 0.86
         self.inst["snowLo"].value, self.inst["snowHi"].value = 0.50, 0.78
         self.land["landSoft"].value = world.land_soft
+        self.land["landColour"].value = world.land_colour
         self.land["relief"].value = world.relief
         self.land["voidBelow"].value = world.void_below if world.void_below is not None else -2.0e6
         self.obj["ceilingGap"].value = world.ceiling
@@ -1394,17 +1397,18 @@ class Scene:
 
 def world_from_config(edid, c):
     """One land's settings from worlds.json."""
-    kw = {k: c[k] for k in ("winter", "surround", "soften", "roads", "road_extra", "land_soft", "hide", "ceiling", "true_coast", "terrain_lines", "all_water", "relief", "flatten", "void_below", "alt_textures", "road_meshes", "road_colour", "road_paint", "direct", "placed", "ambient", "tone", "water", "water_style") if k in c}
+    kw = {k: c[k] for k in ("winter", "surround", "soften", "roads", "road_extra", "land_soft", "land_colour", "hide", "ceiling", "true_coast", "terrain_lines", "all_water", "relief", "flatten", "void_below", "alt_textures", "road_meshes", "road_colour", "road_paint", "direct", "placed", "ambient", "tone", "water", "water_style") if k in c}
     return World(edid, **kw)
 
 
 class World:
-    def __init__(self, editor_id, dyn=None, folder=None, winter=True, surround=False, soften=0.0, roads=True, road_extra=None, land_soft=0.0, hide=(), ceiling=0.0, true_coast=True, terrain_lines=False, all_water=False, relief=1.0, flatten=(), void_below=None, alt_textures=False, road_meshes=False, road_colour=(0.40, 0.38, 0.36), road_paint=None,
+    def __init__(self, editor_id, dyn=None, folder=None, winter=True, surround=False, soften=0.0, roads=True, road_extra=None, land_soft=0.0, land_colour=(0.0, 0.0, 0.0), hide=(), ceiling=0.0, true_coast=True, terrain_lines=False, all_water=False, relief=1.0, flatten=(), void_below=None, alt_textures=False, road_meshes=False, road_colour=(0.40, 0.38, 0.36), road_paint=None,
                  water=((0.33, 0.44, 0.52), (0.23, 0.33, 0.42), (0.055, 0.085, 0.14), (0.03, 0.05, 0.09)), water_style=0,
                  direct=False, placed=False, ambient=(0.56, 0.62, 0.74), tone=(1.0, 1.0, 1.0)):
         self.water = tuple(tuple(c) for c in water)
         self.water_style = water_style
         self.land_soft = land_soft
+        self.land_colour = tuple(land_colour)
         self.true_coast = true_coast
         self.terrain_lines = terrain_lines
         self.all_water = all_water

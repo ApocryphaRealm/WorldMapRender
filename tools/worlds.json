@@ -1,5 +1,5 @@
 {
-    "_comment": "Lands that get a rendered map. rect: cells x0 y0 x1 y1 of the sheet, or auto (the land above water, the markers and a margin). host: the level 32 LOD chunk the sheet's mesh is named after, or auto (the chunk under the middle of the sheet). onamz: the map offset height. usable: the map data's usable size. Other lands keep their paper map or their 3D map. winter: false for lands the permanent winter does not reach, which then keep their own colours. surround: true blends the land beyond the markers into smooth snow and rock, fading its object LOD. soften: 0 to 1 for lands whose mountain LOD is coarser than Skyrim's, measured in PLAN.md. road_extra: more landscape textures to draw as paths, for a land whose paths are painted in plain dirt. sea: true for a land with an open sea. direct: terrain and buildings from the land's records, not LOD. ambient, tone: the day light. placed: also draw the structures the land's references place, from their full models. single: day or night: one picture, for a land with no sky cycle. lights: true marks every light and glowing plant the references place. water: shallow and deep colours, day then night. water_style 1: Apocrypha. placed all: rock as well. land_soft: shade terrain from the map's heights, and lay snow on gentle dark ground. hide: cell rectangles of filler terrain to leave out. placed all: every structure and rock from its full model, instead of object LOD. ceiling: for a cave land, leave out what stands this far above the floor. true_coast: false takes the coast from the LOD's heights instead of the land's records. terrain_lines: true also traces the terrain's edges, as the approved Skyrim map was drawn. keep: the owner approved this land's picture; a rerun leaves it unless the land is named with --world. ppc: this land's sheet size in pixels a cell. tile_ppc: tiles over the sheet at this size. alt_textures: read the texture swaps on model records. road_meshes: road models drawn as flat stone in road_colour. road_paint: painted roads take this colour rather than their texture's. all_water: the sea covers all its ground. relief: strength of the ground's shading. flatten: x0 y0 x1 y1 z, filler cells levelled. edge_cells: width of the sheet's soft edge. void_below: terrain at this height is the land's unused flat ground, and melts into the surround. retouch: keep = outlines in cells, everything outside them, or inside its remove outlines, becomes smooth ground; cosmetic, for what the player cannot reach.",
+    "_comment": "Lands that get a rendered map. rect: cells x0 y0 x1 y1 of the sheet, or auto (the land above water, the markers and a margin). host: the level 32 LOD chunk the sheet's mesh is named after, or auto (the chunk under the middle of the sheet). onamz: the map offset height. usable: the map data's usable size. Other lands keep their paper map or their 3D map. winter: false for lands the permanent winter does not reach, which then keep their own colours. surround: true blends the land beyond the markers into smooth snow and rock, fading its object LOD. soften: 0 to 1 for lands whose mountain LOD is coarser than Skyrim's, measured in PLAN.md. road_extra: more landscape textures to draw as paths, for a land whose paths are painted in plain dirt. sea: true for a land with an open sea. direct: terrain and buildings from the land's records, not LOD. ambient, tone: the day light. placed: also draw the structures the land's references place, from their full models. single: day or night: one picture, for a land with no sky cycle. lights: true marks every light and glowing plant the references place. water: shallow and deep colours, day then night. water_style 1: Apocrypha. placed all: rock as well. land_soft: shade terrain from the map's heights, and lay snow on gentle dark ground. hide: cell rectangles of filler terrain to leave out. placed all: every structure and rock from its full model, instead of object LOD. ceiling: for a cave land, leave out what stands this far above the floor. true_coast: false takes the coast from the LOD's heights instead of the land's records. terrain_lines: true also traces the terrain's edges, as the approved Skyrim map was drawn. keep: the owner approved this land's picture; a rerun leaves it unless the land is named with --world. ppc: this land's sheet size in pixels a cell. tile_ppc: tiles over the sheet at this size. alt_textures: read the texture swaps on model records. road_meshes: road models drawn as flat stone in road_colour. road_paint: painted roads take this colour rather than their texture's. all_water: the sea covers all its ground. relief: strength of the ground's shading. flatten: x0 y0 x1 y1 z, filler cells levelled. edge_cells: width of the sheet's soft edge. void_below: terrain at this height is the land's unused flat ground, and melts into the surround. retouch: keep = outlines in cells, everything outside them, or inside its remove outlines, becomes smooth ground; cosmetic, for what the player cannot reach. land_colour: the LOD ground drawn in this colour, keeping its pattern, for a cave whose LOD ground is bare dirt. retouch heal: rectangles whose drawn outline is taken out.",
     "Tamriel": {
         "name": "Skyrim",
         "rect": [
@@ -88,69 +88,182 @@
         "alt_textures": true,
         "land_soft": 0.4,
         "retouch": {
-            "remove": [
+            "keep": [
                 [
                     [
-                        -2.1,
-                        4.6
+                        -6,
+                        -7
                     ],
                     [
-                        -1.7,
-                        4.6
+                        8.8,
+                        -7
                     ],
                     [
-                        -1.7,
-                        1.0
+                        8.8,
+                        9
                     ],
                     [
-                        -2.1,
-                        1.0
-                    ]
-                ],
-                [
-                    [
-                        5.5,
-                        5.0
-                    ],
-                    [
-                        6.3,
-                        5.0
-                    ],
-                    [
-                        6.3,
-                        3.9
-                    ],
-                    [
-                        5.75,
-                        3.9
-                    ]
-                ],
-                [
-                    [
-                        0.0,
-                        -2.35
-                    ],
-                    [
-                        1.15,
-                        -2.35
-                    ],
-                    [
-                        1.15,
-                        -3.1
-                    ],
-                    [
-                        0.0,
-                        -3.1
+                        -6,
+                        9
                     ]
                 ]
             ],
-            "feather": 0.2,
+            "feather": 0.05,
             "ground_at": [
                 8.0,
                 -4.0
             ],
-            "mottle": 0.0
-        }
+            "mottle": 0.0,
+            "heal": [
+                [
+                    4.0,
+                    -0.5,
+                    4.5,
+                    0.0
+                ]
+            ],
+            "remove": [
+                [
+                    [
+                        3.1,
+                        6.05
+                    ],
+                    [
+                        4.05,
+                        6.05
+                    ],
+                    [
+                        4.05,
+                        5.8
+                    ],
+                    [
+                        3.85,
+                        5.92
+                    ],
+                    [
+                        3.3,
+                        5.92
+                    ],
+                    [
+                        3.1,
+                        5.8
+                    ]
+                ],
+                [
+                    [
+                        0.9299999999999999,
+                        -1.05
+                    ],
+                    [
+                        1.07,
+                        -1.05
+                    ],
+                    [
+                        1.07,
+                        -1.4
+                    ],
+                    [
+                        0.9299999999999999,
+                        -1.4
+                    ]
+                ],
+                [
+                    [
+                        2.93,
+                        -1.35
+                    ],
+                    [
+                        3.07,
+                        -1.35
+                    ],
+                    [
+                        3.07,
+                        -1.7
+                    ],
+                    [
+                        2.93,
+                        -1.7
+                    ]
+                ],
+                [
+                    [
+                        0.9299999999999999,
+                        4.4
+                    ],
+                    [
+                        1.07,
+                        4.4
+                    ],
+                    [
+                        1.07,
+                        4.0
+                    ],
+                    [
+                        0.9299999999999999,
+                        4.0
+                    ]
+                ],
+                [
+                    [
+                        2.2,
+                        4.56
+                    ],
+                    [
+                        2.55,
+                        4.56
+                    ],
+                    [
+                        2.55,
+                        4.7
+                    ],
+                    [
+                        2.2,
+                        4.7
+                    ]
+                ],
+                [
+                    [
+                        1.93,
+                        1.5
+                    ],
+                    [
+                        2.07,
+                        1.5
+                    ],
+                    [
+                        2.07,
+                        1.15
+                    ],
+                    [
+                        1.93,
+                        1.15
+                    ]
+                ],
+                [
+                    [
+                        -0.37,
+                        3.5
+                    ],
+                    [
+                        -0.22999999999999998,
+                        3.5
+                    ],
+                    [
+                        -0.22999999999999998,
+                        3.1
+                    ],
+                    [
+                        -0.37,
+                        3.1
+                    ]
+                ]
+            ]
+        },
+        "land_colour": [
+            0.34,
+            0.345,
+            0.37
+        ]
     },
     "DLC01FalmerValley": {
         "name": "Forgotten Vale",

@@ -40,6 +40,14 @@ if os.path.isdir(tdir):
                 print(name, im.size, flush=True)
             entry = maps.setdefault(n, {"num": n, "name": c["name"], "pics": {}})
             entry["pics"][tag] = "full/" + name
+            if single:
+                # the land's other picture, which the game does not use, when the build kept it to compare
+                other = "day" if single == "night" else "night"
+                alt = os.path.join(folder, "..", "preview", "%s-%s-full.png" % (low, other))
+                if os.path.isfile(alt):
+                    altname = name.replace("-%s.jpg" % tag, "-%s-unused.jpg" % other)
+                    Image.open(alt).convert("RGB").save(os.path.join(root, "full", altname), quality=93, subsampling=0)
+                    entry["pics"]["%s, not in use" % other] = "full/" + altname
             old = os.path.join(sys.argv[3], "textures", "terrain", "worldmaprender", f) if len(sys.argv) > 3 else None
             if old and os.path.isfile(old) and (os.path.getsize(old) != os.path.getsize(src) or open(old, "rb").read() != open(src, "rb").read()):
                 oldname = name[:-4] + "-installed.jpg"

@@ -50,7 +50,17 @@ def apply(img, rect, ppc, cfg):
     n = _noise(h, w, 7)[..., None]
     fill = ground[None, None, :] * (1.0 + cfg.get("mottle", 0.05) * n)
     k = keep[..., None]
-    return np.clip(img.astype(np.float32) * k + fill * (1 - k), 0, 255).astype(np.uint8)
+    out = np.clip(img.astype(np.float32) * k + fill * (1 - k), 0, 255).astype(np.uint8)
+    # heal: rectangles x0 y0 x1 y1 in cells whose drawn outline is taken out, each side copied over from just beside it
+    for x0, y0, x1, y1 in cfg.get("heal", []):
+        px0, px1 = int((x0 - rect[0]) * ppc), int((x1 - rect[0]) * ppc)
+        py0, py1 = int((rect[3] - y1) * ppc), int((rect[3] - y0) * ppc)
+        t = max(3, ppc // 32)
+        for py in (py0, py1):
+            out[py - t:py + t, px0 - t:px1 + t] = out[py + t:py + 3 * t, px0 - t:px1 + t]
+        for px in (px0, px1):
+            out[py0 - t:py1 + t, px - t:px + t] = out[py0 - t:py1 + t, px + t:px + 3 * t]
+    return out
 
 
 def main():

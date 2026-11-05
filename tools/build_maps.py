@@ -321,6 +321,10 @@ def build_world(edid, cfg, out, ppc, tc, preview):
             im = Image.fromarray(img)
             scale = max(1, max(im.size) // 2048)
             im.reduce(scale).save(os.path.join(preview, "%s-%s.png" % (low, tag)))
+        if cfg.get("single"):
+            # the picture the game won't use, full size, so the two can be compared
+            other = "day" if cfg["single"] == "night" else "night"
+            Image.fromarray(day if other == "day" else night).save(os.path.join(preview, "%s-%s-full.png" % (low, other)))
     # "single": "night" or "day": a land with no sky cycle has one picture, and the plugin never swaps it
     single = cfg.get("single")
     to_dds(night if single == "night" else day, os.path.join(tdir, low + ".dds"), tc)
