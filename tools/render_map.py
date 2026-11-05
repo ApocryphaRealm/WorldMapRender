@@ -96,6 +96,7 @@ uniform sampler2D roadmap;
 uniform float upp;
 uniform float roadsOn;
 uniform float relief;
+uniform float voidBelow;
 uniform float landSoft;  // 0 on Skyrim. Above it, shading comes from the map's heights: the LOD's normal maps ring on gentle hills
 in vec3 vW; in vec2 vUV; in vec4 vC;
 out vec4 f;
@@ -140,6 +141,8 @@ void main() {
     a = mix(a, road.rgb, roadsOn * smoothstep(0.26, 0.55, road.a) * (1.0 - outside));
     n.xy *= mix(1.6, 1.0, landSoft) * relief;  // the height shows better on a flat picture
     f = vec4(light(a, normalize(n), 0.0), 1.0);
+    // A land's unused ground: the flat default height the engine fills cells with, hidden in play. It melts into the map's surround.
+    if (voidBelow > -1.0e6) f.rgb = mix(night == 1 ? vec3(0.039, 0.051, 0.078) : vec3(0.129, 0.161, 0.204), f.rgb, smoothstep(voidBelow + 10.0, voidBelow + 140.0, vW.z));
 }
 """
 
@@ -782,6 +785,7 @@ class Scene:
         self.inst["snowLo"].value, self.inst["snowHi"].value = 0.50, 0.78
         self.land["landSoft"].value = world.land_soft
         self.land["relief"].value = world.relief
+        self.land["voidBelow"].value = world.void_below if world.void_below is not None else -2.0e6
         self.obj["ceilingGap"].value = world.ceiling
         self.inst["ceilingGap"].value = world.ceiling
         self.inst["soften"].value = 0.0   # what the references place is real geometry, not coarse LOD
@@ -818,7 +822,10 @@ class Scene:
     def clear(self):
         for i, (fb, _) in enumerate(self.fbs):
             fb.use()
-            fb.clear(0.13, 0.16, 0.2, 1.0, depth=1.0)
+            if i == 1 and self.world.void_below is not None:
+                fb.clear(0.039, 0.051, 0.078, 1.0, depth=1.0)
+            else:
+                fb.clear(0.13, 0.16, 0.2, 1.0, depth=1.0)
         self.height_fb.use()
         self.height_fb.clear(-2.0e6, 0.0, 0.0, 1.0, depth=1.0)
         self.level_fb.use()
@@ -1387,12 +1394,12 @@ class Scene:
 
 def world_from_config(edid, c):
     """One land's settings from worlds.json."""
-    kw = {k: c[k] for k in ("winter", "surround", "soften", "roads", "road_extra", "land_soft", "hide", "ceiling", "true_coast", "terrain_lines", "all_water", "relief", "flatten", "alt_textures", "road_meshes", "road_colour", "road_paint", "direct", "placed", "ambient", "tone", "water", "water_style") if k in c}
+    kw = {k: c[k] for k in ("winter", "surround", "soften", "roads", "road_extra", "land_soft", "hide", "ceiling", "true_coast", "terrain_lines", "all_water", "relief", "flatten", "void_below", "alt_textures", "road_meshes", "road_colour", "road_paint", "direct", "placed", "ambient", "tone", "water", "water_style") if k in c}
     return World(edid, **kw)
 
 
 class World:
-    def __init__(self, editor_id, dyn=None, folder=None, winter=True, surround=False, soften=0.0, roads=True, road_extra=None, land_soft=0.0, hide=(), ceiling=0.0, true_coast=True, terrain_lines=False, all_water=False, relief=1.0, flatten=(), alt_textures=False, road_meshes=False, road_colour=(0.40, 0.38, 0.36), road_paint=None,
+    def __init__(self, editor_id, dyn=None, folder=None, winter=True, surround=False, soften=0.0, roads=True, road_extra=None, land_soft=0.0, hide=(), ceiling=0.0, true_coast=True, terrain_lines=False, all_water=False, relief=1.0, flatten=(), void_below=None, alt_textures=False, road_meshes=False, road_colour=(0.40, 0.38, 0.36), road_paint=None,
                  water=((0.33, 0.44, 0.52), (0.23, 0.33, 0.42), (0.055, 0.085, 0.14), (0.03, 0.05, 0.09)), water_style=0,
                  direct=False, placed=False, ambient=(0.56, 0.62, 0.74), tone=(1.0, 1.0, 1.0)):
         self.water = tuple(tuple(c) for c in water)
@@ -1401,6 +1408,7 @@ class World:
         self.true_coast = true_coast
         self.terrain_lines = terrain_lines
         self.all_water = all_water
+        self.void_below = void_below
         self.relief = relief
         self.flatten = flatten
         self.alt_textures = alt_textures
