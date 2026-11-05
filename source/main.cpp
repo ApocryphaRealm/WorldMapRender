@@ -226,6 +226,44 @@ namespace
 	float           g_sheetZ = 0.0f;    // where the sheet really is in the scene, 0 until found
 	RE::NiAVObject* g_sheet = nullptr;  // only used while the map is open
 
+	// Viewing a land whose parent's LOD is still up (Dayspring from Skyrim), both chunks hang under the LOD root with their sheets
+	// at one height, and they fight. The other land's whole chunk is hidden while this map is open.
+	std::vector<RE::NiPointer<RE::NiAVObject>> g_hidden;
+	std::string                                g_sheetFile;
+
+	bool IsOtherSheet(RE::NiAVObject* a_object)
+	{
+		auto geometry = a_object->AsGeometry();
+		if (!geometry || !a_object->name.c_str() || std::strcmp(a_object->name.c_str(), "map sheet") != 0) { return false; }
+		auto effect = netimmerse_cast<RE::BSEffectShaderProperty*>(geometry->GetGeometryRuntimeData().properties[RE::BSGeometry::States::kEffect].get());
+		auto material = effect ? static_cast<RE::BSEffectShaderMaterial*>(effect->GetBaseMaterial()) : nullptr;
+		if (!material || !material->sourceTexturePath.c_str()) { return false; }
+		return Lower(material->sourceTexturePath.c_str()).find(g_sheetFile) == std::string::npos;
+	}
+
+	void HideOtherSheets(RE::NiAVObject* a_object)
+	{
+		if (!a_object) { return; }
+		if (auto node = a_object->AsNode())
+		{
+			for (auto& child : node->GetChildren()) { HideOtherSheets(child.get()); }
+			return;
+		}
+		if (!IsOtherSheet(a_object) || !a_object->parent || a_object->parent->GetAppCulled()) { return; }
+		a_object->parent->SetAppCulled(true);
+		g_hidden.emplace_back(a_object->parent);
+		logger::info("Hid another land's chunk under this map: {}", a_object->parent->name.c_str());
+	}
+
+	void ShowHidden()
+	{
+		for (auto& node : g_hidden)
+		{
+			if (node) { node->SetAppCulled(false); }
+		}
+		g_hidden.clear();
+	}
+
 	// Night and day: every sheet carrying one of our textures gets the picture for the hour.
 	int SwapSheets(RE::NiAVObject* a_object, bool a_night)
 	{
@@ -246,7 +284,7 @@ namespace
 		if (Lower(path).find(kSheetKey) == std::string::npos) { return 0; }
 		if (g_off.swap)
 		{
-			if (a_object->name.c_str() && std::strcmp(a_object->name.c_str(), "map sheet") == 0)
+			if (a_object->name.c_str() && std::strcmp(a_object->name.c_str(), "map sheet") == 0 && !IsOtherSheet(a_object))
 			{
 				g_sheetZ = a_object->world.translate.z;
 				g_sheet = a_object;
@@ -254,7 +292,7 @@ namespace
 			return 1;
 		}
 		// Every shape of ours has its picture set, as d34d519 did, but only the sheet itself gives the height and takes the night picture.
-		const bool isSheet = a_object->name.c_str() && std::strcmp(a_object->name.c_str(), "map sheet") == 0;
+		const bool isSheet = a_object->name.c_str() && std::strcmp(a_object->name.c_str(), "map sheet") == 0 && !IsOtherSheet(a_object);
 		if (isSheet)
 		{
 			g_sheetZ = a_object->world.translate.z;
@@ -528,6 +566,13 @@ namespace
 				camera ? camera->GetRuntimeData2().viewFrustum.fRight : 0.0f, pan);
 		}
 
+		// the other land's chunk can arrive a little after the map opens
+		if (g.frame % 30 == 1 && g.frame < 1800)
+		{
+			g_sheetFile = kSheetKey + std::string("\\") + Lower(data.worldSpace->editorID.c_str()) + ".dds";
+			if (auto tes = RE::TES::GetSingleton()) { HideOtherSheets(tes->lodLandRoot); }
+		}
+
 		if (!g.sheetsDone && g.frame % 30 == 1)
 		{
 			auto       calendar = RE::Calendar::GetSingleton();
@@ -589,6 +634,7 @@ namespace
 			else if (!a_event->opening && g.open)
 			{
 				g.open = false;
+				ShowHidden();
 				g_stickX = g_stickY = 0.0f;
 				mapstate::g.open = false;
 				Tiles::Close();
