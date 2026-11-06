@@ -279,6 +279,39 @@ namespace
 			static_cast<std::uint64_t>(a_effect->flags.underlying()), chain);
 	}
 
+	// Whether a sheet's picture really reached the graphics card: a texture can be handed back with no image behind it.
+	std::string DescribeTexture(RE::NiSourceTexture* a_source)
+	{
+		if (!a_source) { return "no texture"; }
+		auto data = reinterpret_cast<RE::NiTexture::RendererData*>(a_source->rendererTexture);
+		if (!data) { return std::format("{} with no renderer data", a_source->name.c_str() ? a_source->name.c_str() : "?"); }
+		return std::format("{} {}x{}, image {}, view {}", a_source->name.c_str() ? a_source->name.c_str() : "?", data->width, data->height,
+			data->texture ? "yes" : "NONE", data->resourceView ? "yes" : "NONE");
+	}
+
+	// What the frame is drawn through, read once the view has settled: the sky's fog, the camera's near and far planes, and the sheet again.
+	void DescribeView(RE::NiCamera* a_camera)
+	{
+		if (auto sky = RE::Sky::GetSingleton())
+		{
+			logger::info("Sky mode {}, fog near {} far {} power {} clamp {}, weather {:X}", static_cast<std::uint32_t>(sky->mode.get()), sky->fogNear, sky->fogFar, sky->fogPower,
+				sky->fogClamp, sky->currentWeather ? sky->currentWeather->GetFormID() : 0);
+		}
+		if (a_camera)
+		{
+			const auto& fr = a_camera->GetRuntimeData2().viewFrustum;
+			logger::info("View near {} far {}, camera at {} {} {}", fr.fNear, fr.fFar, a_camera->world.translate.x, a_camera->world.translate.y, a_camera->world.translate.z);
+		}
+		auto geometry = g_sheet ? g_sheet->AsGeometry() : nullptr;
+		auto effect = geometry ? netimmerse_cast<RE::BSEffectShaderProperty*>(geometry->GetGeometryRuntimeData().properties[RE::BSGeometry::States::kEffect].get()) : nullptr;
+		auto material = effect ? static_cast<RE::BSEffectShaderMaterial*>(effect->GetBaseMaterial()) : nullptr;
+		if (material)
+		{
+			DescribeSheet(g_sheet, effect, material);
+			logger::info("Sheet picture now: {}", DescribeTexture(material->sourceTexture.get()));
+		}
+	}
+
 	// Night and day: every sheet carrying one of our textures gets the picture for the hour.
 	int SwapSheets(RE::NiAVObject* a_object, bool a_night)
 	{
@@ -324,8 +357,9 @@ namespace
 			logger::error("Could not load {}", path);
 			return 0;
 		}
+		const auto before = DescribeTexture(material->sourceTexture.get());
 		material->sourceTexture = RE::NiPointer<RE::NiSourceTexture>(source);
-		logger::info("Sheet {} now shows {}", a_object->name.c_str(), path);
+		logger::info("Sheet {} now shows {} (was {}; now {})", a_object->name.c_str(), path, before, DescribeTexture(source));
 		return 1;
 	}
 
@@ -626,6 +660,8 @@ namespace
 			logger::info("Camera {} {} z {} distance {} width {} fov {} right {} pan {}", root->world.translate.x, root->world.translate.y, root->world.translate.z, d, width, fov,
 				camera ? camera->GetRuntimeData2().viewFrustum.fRight : 0.0f, pan);
 		}
+
+		if (g.frame == 90) { DescribeView(camera); }
 
 		// the other land's chunk can arrive a little after the map opens
 		if (g.frame % 30 == 1 && g.frame < 1800)
