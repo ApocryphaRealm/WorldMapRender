@@ -17,5 +17,5 @@ Written as changes happen, not reconstructed afterwards (rule 61). Each version 
 - Straight-down maps for 13 lands rendered from the list's own LOD, day and night
 
 ### Fixed
+- Opening the map inside a city no longer shows a close view of the land below for half a second: the opening flight starts above the picture (table switch nolift turns this off). Those lands keep their own map offset, as in GTS Land Map; copying Skyrim's offset into them coincided with the map showing only its backdrop and markers
 - The player's own field of view comes back after the map, whatever other mods did to it at the map's open
-- Opening the map inside a city (Windhelm, Whiterun and the other lands that show Skyrim's map) no longer shows a close view of the land below for half a second before the picture: those lands now open with Skyrim's map offset

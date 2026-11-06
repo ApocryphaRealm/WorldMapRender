@@ -80,7 +80,7 @@ namespace
 	// the log folder wins, so a part can be switched between two map opens with no relaunch. Own-map is read at data load only.
 	struct Off
 	{
-		bool swap = false, clamp = false, ownMap = false, stick = false, look = false, fov = false, tiles = false, frame = false;
+		bool swap = false, clamp = false, ownMap = false, stick = false, look = false, fov = false, tiles = false, frame = false, lift = false;
 	} g_off;
 
 	// A copy in the log folder wins over the installed one and is read every time the map opens: changes need no restart.
@@ -120,6 +120,7 @@ namespace
 					else if (word == "nofov") { g_off.fov = true; }
 					else if (word == "notiles") { g_off.tiles = true; }
 					else if (word == "noframe") { g_off.frame = true; }
+					else if (word == "nolift") { g_off.lift = true; }
 				}
 				logger::info("Test switches: {}", line);
 				continue;
@@ -179,24 +180,10 @@ namespace
 		auto data = RE::TESDataHandler::GetSingleton();
 		if (!data) { return; }
 		int done = 0;
-		static std::vector<std::pair<RE::TESWorldSpace*, RE::WORLD_MAP_OFFSET_DATA>> recorded;  // each land's record offset, before any change
-		const auto original = [&](RE::TESWorldSpace* a_world) {
-			auto it = std::find_if(recorded.begin(), recorded.end(), [&](auto& a_entry) { return a_entry.first == a_world; });
-			if (it == recorded.end())
-			{
-				recorded.emplace_back(a_world, a_world->worldMapOffsetData);
-				it = std::prev(recorded.end());
-			}
-			return it->second;
-		};
-		const auto same = [](const RE::WORLD_MAP_OFFSET_DATA& a, const RE::WORLD_MAP_OFFSET_DATA& b) {
-			return a.mapScale == b.mapScale && a.mapOffsetX == b.mapOffsetX && a.mapOffsetY == b.mapOffsetY && a.mapOffsetZ == b.mapOffsetZ;
-		};
 		for (auto form : data->GetFormArray<RE::TESWorldSpace>())
 		{
 			auto w = Find(form);
 			if (!w) { continue; }
-			original(form);  // before any change
 			auto& m = form->worldMapData;
 			auto& o = form->worldMapOffsetData;
 			// A land with a picture of its own is its own map, whatever the winning record says. Only the map flag goes: its land, LOD and water still come from its parent.
@@ -225,20 +212,7 @@ namespace
 			m.cameraData.initialPitch = 90.0f;  // straight down, whatever a later plugin's record says
 			++done;
 		}
-		// A land that shows its parent's map (Windhelm's city shows Skyrim's) opens the map camera through ITS OWN offset, not the
-		// parent's. With the parent's height offset moved up to our sheet and the child's left at 0, the opening flight started ~184000
-		// below the sheet and spent half a second rising through the real land before the picture showed (log of 06:37, Windhelm).
-		// So the child takes its parent's new offset - only where it matched the parent's own record, so a deliberate one is kept.
-		int aligned = 0;
-		for (auto form : data->GetFormArray<RE::TESWorldSpace>())
-		{
-			auto parent = form ? form->parentWorld : nullptr;
-			if (!parent || Find(form) || !Find(parent) || !form->parentUseFlags.any(RE::TESWorldSpace::ParentUseFlag::kUseMapData)) { continue; }
-			if (!same(original(form), original(parent))) { continue; }
-			form->worldMapOffsetData = parent->worldMapOffsetData;
-			++aligned;
-		}
-		if (a_log) { logger::info("Map records set: {}; {} land(s) showing a parent's map now open with its offset", done, aligned); }
+		if (a_log) { logger::info("Map records set: {}", done); }
 	}
 
 	void SetSetting(RE::Setting*& a_setting, std::string_view a_name, float a_value)
@@ -291,6 +265,20 @@ namespace
 		g_hidden.clear();
 	}
 
+	// Where a sheet hangs and how it is drawn, once per sheet at each map open: which chunk, whether anything above it is culled,
+	// and its alpha and shader flags. Two copies of one land's sheet were found on 2026-11-06 (sheets 4, not 2) when nothing drew.
+	void DescribeSheet(RE::NiAVObject* a_object, RE::BSEffectShaderProperty* a_effect, RE::BSEffectShaderMaterial* a_material)
+	{
+		std::string chain;
+		for (RE::NiAVObject* p = a_object->parent; p; p = p->parent)
+		{
+			chain += std::format(" < {}{}", p->name.c_str() ? p->name.c_str() : "?", p->GetAppCulled() ? " (culled)" : "");
+		}
+		logger::info("Sheet at {} {} {} (local z {}), culled {}, alpha {} colour alpha {}, flags {:X}{}", a_object->world.translate.x, a_object->world.translate.y,
+			a_object->world.translate.z, a_object->local.translate.z, a_object->GetAppCulled(), a_effect->alpha, a_material->baseColor.alpha,
+			static_cast<std::uint64_t>(a_effect->flags.underlying()), chain);
+	}
+
 	// Night and day: every sheet carrying one of our textures gets the picture for the hour.
 	int SwapSheets(RE::NiAVObject* a_object, bool a_night)
 	{
@@ -315,6 +303,7 @@ namespace
 			{
 				g_sheetZ = a_object->world.translate.z;
 				g_sheet = a_object;
+				DescribeSheet(a_object, effect, material);
 			}
 			return 1;
 		}
@@ -324,6 +313,7 @@ namespace
 		{
 			g_sheetZ = a_object->world.translate.z;
 			g_sheet = a_object;
+			DescribeSheet(a_object, effect, material);
 			if (a_night) { path.insert(path.size() - 4, "_n"); }
 		}
 		RE::NiPointer<RE::NiTexture> texture;
@@ -516,6 +506,17 @@ namespace
 			}
 			if (auto* flight = data.camera.unk80.get())
 			{
+				// A land that shows this map (Windhelm's city shows Skyrim's) starts the opening flight at its own height, far under the
+				// sheet, and the view rose through the real land for half a second (log of 06:37, Windhelm). GTS Land Map leaves those
+				// lands' records alone, and so does this plugin again: 222c0a2 copied the parent's map offset into them, and the
+				// picture stopped drawing. The flight is started above the sheet here instead; only a flight rising to the sheet, never the closing one.
+				const float floor = world->z + 10000.0f;
+				if (!g_off.lift && flight->zoomDestination.z > floor && (flight->currentPosition.z < floor || flight->zoomOrigin.z < floor))
+				{
+					logger::info("Flight started under the sheet at {} (from {}), lifted to {}", flight->currentPosition.z, flight->zoomOrigin.z, floor);
+					flight->currentPosition.z = (std::max)(flight->currentPosition.z, floor);
+					flight->zoomOrigin.z = (std::max)(flight->zoomOrigin.z, floor);
+				}
 				fit(flight->currentPosition);
 				fit(flight->zoomDestination);
 				fit(flight->zoomOrigin);
@@ -690,6 +691,19 @@ namespace
 				g.savedWorld = g_realWorldFOV > 0.0f ? g_realWorldFOV : fov.worldFOV;
 				g.savedFirst = g_realFirstFOV > 0.0f ? g_realFirstFOV : fov.firstPersonFOV;
 				logger::info("Map opened, FOV now {} {}, the player's own {} {}", fov.worldFOV, fov.firstPersonFOV, g.savedWorld, g.savedFirst);
+				if (auto pc = RE::PlayerCharacter::GetSingleton())
+				{
+					auto ws = pc->GetWorldspace();
+					auto cell = pc->GetParentCell();
+					if (ws)
+					{
+						const auto& o = ws->worldMapOffsetData;
+						logger::info("Player in {} at {} {} {}, parent {} (its map {}), onam {} {} {} {}", ws->editorID.c_str(), pc->GetPositionX(), pc->GetPositionY(), pc->GetPositionZ(),
+							ws->parentWorld ? ws->parentWorld->editorID.c_str() : "none", ws->parentUseFlags.any(RE::TESWorldSpace::ParentUseFlag::kUseMapData),
+							o.mapScale, o.mapOffsetX, o.mapOffsetY, o.mapOffsetZ);
+					}
+					else { logger::info("Player in an interior: {}", cell && cell->GetFormEditorID() ? cell->GetFormEditorID() : "?"); }
+				}
 			}
 			else if (!a_event->opening && g.open)
 			{
