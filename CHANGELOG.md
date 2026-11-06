@@ -18,3 +18,4 @@ Written as changes happen, not reconstructed afterwards (rule 61). Each version 
 
 ### Fixed
 - The player's own field of view comes back after the map, whatever other mods did to it at the map's open
+- Opening the map inside a city (Windhelm, Whiterun and the other lands that show Skyrim's map) no longer shows a close view of the land below for half a second before the picture: those lands now open with Skyrim's map offset

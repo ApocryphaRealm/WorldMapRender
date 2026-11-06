@@ -179,10 +179,24 @@ namespace
 		auto data = RE::TESDataHandler::GetSingleton();
 		if (!data) { return; }
 		int done = 0;
+		static std::vector<std::pair<RE::TESWorldSpace*, RE::WORLD_MAP_OFFSET_DATA>> recorded;  // each land's record offset, before any change
+		const auto original = [&](RE::TESWorldSpace* a_world) {
+			auto it = std::find_if(recorded.begin(), recorded.end(), [&](auto& a_entry) { return a_entry.first == a_world; });
+			if (it == recorded.end())
+			{
+				recorded.emplace_back(a_world, a_world->worldMapOffsetData);
+				it = std::prev(recorded.end());
+			}
+			return it->second;
+		};
+		const auto same = [](const RE::WORLD_MAP_OFFSET_DATA& a, const RE::WORLD_MAP_OFFSET_DATA& b) {
+			return a.mapScale == b.mapScale && a.mapOffsetX == b.mapOffsetX && a.mapOffsetY == b.mapOffsetY && a.mapOffsetZ == b.mapOffsetZ;
+		};
 		for (auto form : data->GetFormArray<RE::TESWorldSpace>())
 		{
 			auto w = Find(form);
 			if (!w) { continue; }
+			original(form);  // before any change
 			auto& m = form->worldMapData;
 			auto& o = form->worldMapOffsetData;
 			// A land with a picture of its own is its own map, whatever the winning record says. Only the map flag goes: its land, LOD and water still come from its parent.
@@ -211,7 +225,20 @@ namespace
 			m.cameraData.initialPitch = 90.0f;  // straight down, whatever a later plugin's record says
 			++done;
 		}
-		if (a_log) { logger::info("Map records set: {}", done); }
+		// A land that shows its parent's map (Windhelm's city shows Skyrim's) opens the map camera through ITS OWN offset, not the
+		// parent's. With the parent's height offset moved up to our sheet and the child's left at 0, the opening flight started ~184000
+		// below the sheet and spent half a second rising through the real land before the picture showed (log of 06:37, Windhelm).
+		// So the child takes its parent's new offset - only where it matched the parent's own record, so a deliberate one is kept.
+		int aligned = 0;
+		for (auto form : data->GetFormArray<RE::TESWorldSpace>())
+		{
+			auto parent = form ? form->parentWorld : nullptr;
+			if (!parent || Find(form) || !Find(parent) || !form->parentUseFlags.any(RE::TESWorldSpace::ParentUseFlag::kUseMapData)) { continue; }
+			if (!same(original(form), original(parent))) { continue; }
+			form->worldMapOffsetData = parent->worldMapOffsetData;
+			++aligned;
+		}
+		if (a_log) { logger::info("Map records set: {}; {} land(s) showing a parent's map now open with its offset", done, aligned); }
 	}
 
 	void SetSetting(RE::Setting*& a_setting, std::string_view a_name, float a_value)
