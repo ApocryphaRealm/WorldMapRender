@@ -80,7 +80,7 @@ namespace
 	// the log folder wins, so a part can be switched between two map opens with no relaunch. Own-map is read at data load only.
 	struct Off
 	{
-		bool swap = false, clamp = false, ownMap = false, stick = false, look = false, fov = false, tiles = false, frame = false, lift = false;
+		bool swap = false, clamp = false, ownMap = false, stick = false, look = false, fov = false, tiles = false, frame = false, lift = false, close = false;
 	} g_off;
 
 	// A copy in the log folder wins over the installed one and is read every time the map opens: changes need no restart.
@@ -121,6 +121,7 @@ namespace
 					else if (word == "notiles") { g_off.tiles = true; }
 					else if (word == "noframe") { g_off.frame = true; }
 					else if (word == "nolift") { g_off.lift = true; }
+					else if (word == "noclosehold") { g_off.close = true; }
 				}
 				logger::info("Test switches: {}", line);
 				continue;
@@ -380,6 +381,7 @@ namespace
 		bool  loggedRange = false;
 		bool  tintSet = false;
 		bool  framed[2] = { false, false };
+		bool  closeHeld = false;
 	} g;
 
 	// The player's own field of view. Other plugins handle the map's open event too (FWMF's BakaWorldMapFOV raises it to 110
@@ -550,6 +552,17 @@ namespace
 					logger::info("Flight started under the sheet at {} (from {}), lifted to {}", flight->currentPosition.z, flight->zoomOrigin.z, floor);
 					flight->currentPosition.z = (std::max)(flight->currentPosition.z, floor);
 					flight->zoomOrigin.z = (std::max)(flight->zoomOrigin.z, floor);
+				}
+				// The closing flight went back to the player and down to the sheet, so the view panned home and zoomed in before the map shut
+				// (the owner, 2026-11-06). It now stays where the view is.
+				const bool flying = static_cast<RE::TESCameraState*>(flight) == data.camera.currentState.get();
+				if (!g_off.close && flying && flight->zoomDestination.z < flight->zoomOrigin.z - 1.0f)
+				{
+					if (!g.closeHeld) { logger::info("Closing flight held at {} {} {} (was going to {} {} {})", flight->currentPosition.x, flight->currentPosition.y, flight->currentPosition.z,
+						flight->zoomDestination.x, flight->zoomDestination.y, flight->zoomDestination.z); }
+					g.closeHeld = true;
+					flight->zoomDestination = flight->currentPosition;
+					flight->zoomOrigin = flight->currentPosition;
 				}
 				fit(flight->currentPosition);
 				fit(flight->zoomDestination);

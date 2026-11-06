@@ -17,5 +17,6 @@ Written as changes happen, not reconstructed afterwards (rule 61). Each version 
 - Straight-down maps for 13 lands rendered from the list's own LOD, day and night
 
 ### Fixed
+- Closing the map no longer pans back to the player and zooms in first: the view stays where it is and the map shuts (table switch noclosehold turns this off)
 - Opening the map inside a city no longer shows a close view of the land below for half a second: the opening flight starts above the picture (table switch nolift turns this off). Those lands keep their own map offset, as in GTS Land Map
 - The player's own field of view comes back after the map, whatever other mods did to it at the map's open
