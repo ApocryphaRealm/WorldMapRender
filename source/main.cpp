@@ -1,4 +1,4 @@
-// World Map Render - GPL-3.0-or-later. Runs the rendered maps' camera, view and panning while the world map is open, and
+﻿// World Map Render - GPL-3.0-or-later. Runs the rendered maps' camera, view and panning while the world map is open, and
 // swaps the day and night sheets.
 //
 // Based on GTSLandMap.dll (GTS Land Map 1.0, Copyright (C) 2026 mxdie, GPL-3.0-or-later,
@@ -13,6 +13,7 @@
 #include "PCH.h"
 
 #include "DevBenchTool.h"
+#include "MapGuard.h"
 #include "MapState.h"
 #include "Tiles.h"
 
@@ -80,7 +81,7 @@ namespace
 	// the log folder wins, so a part can be switched between two map opens with no relaunch. Own-map is read at data load only.
 	struct Off
 	{
-		bool swap = false, clamp = false, ownMap = false, stick = false, look = false, fov = false, tiles = false, frame = false, lift = false, close = false;
+		bool swap = false, clamp = false, ownMap = false, stick = false, look = false, fov = false, tiles = false, frame = false, lift = false, close = false, guard = false;
 	} g_off;
 
 	// A copy in the log folder wins over the installed one and is read every time the map opens: changes need no restart.
@@ -122,6 +123,7 @@ namespace
 					else if (word == "noframe") { g_off.frame = true; }
 					else if (word == "nolift") { g_off.lift = true; }
 					else if (word == "noclosehold") { g_off.close = true; }
+					else if (word == "noguard") { g_off.guard = true; }
 				}
 				logger::info("Test switches: {}", line);
 				continue;
@@ -232,6 +234,8 @@ namespace
 	// at one height, and they fight. The other land's whole chunk is hidden while this map is open.
 	std::vector<RE::NiPointer<RE::NiAVObject>> g_hidden;
 	std::string                                g_sheetFile;
+	RE::BSEffectShaderMaterial*                g_sheetMaterial = nullptr;  // the sheet's material and the picture it was given, for the map guard
+	std::string                                g_sheetPath;
 
 	bool IsOtherSheet(RE::NiAVObject* a_object)
 	{
@@ -310,6 +314,7 @@ namespace
 		{
 			DescribeSheet(g_sheet, effect, material);
 			logger::info("Sheet picture now: {}", DescribeTexture(material->sourceTexture.get()));
+			logger::info("Map guard now: {}", g_off.guard ? std::string("off (table switch noguard)") : MapGuard::Status());
 		}
 	}
 
@@ -337,6 +342,8 @@ namespace
 			{
 				g_sheetZ = a_object->world.translate.z;
 				g_sheet = a_object;
+				g_sheetMaterial = material;
+				g_sheetPath = path;
 				DescribeSheet(a_object, effect, material);
 			}
 			return 1;
@@ -360,6 +367,11 @@ namespace
 		}
 		const auto before = DescribeTexture(material->sourceTexture.get());
 		material->sourceTexture = RE::NiPointer<RE::NiSourceTexture>(source);
+		if (isSheet)
+		{
+			g_sheetMaterial = material;
+			g_sheetPath = path;
+		}
 		logger::info("Sheet {} now shows {} (was {}; now {})", a_object->name.c_str(), path, before, DescribeTexture(source));
 		return 1;
 	}
@@ -674,6 +686,8 @@ namespace
 				camera ? camera->GetRuntimeData2().viewFrustum.fRight : 0.0f, pan);
 		}
 
+		if (g.sheetsDone && !g_off.guard && g.frame < 600) { MapGuard::Frame(g.frame); }
+
 		if (g.frame == 90) { DescribeView(camera); }
 
 		// the other land's chunk can arrive a little after the map opens
@@ -695,6 +709,8 @@ namespace
 			{
 				g.sheetsDone = true;
 				if (found && !g_off.tiles) { Tiles::Open(Lower(data.worldSpace->editorID.c_str()), g_sheet, night); }
+				// the map guard: our own copy of the picture behind the sheet, whatever the engine's texture manager did with its copy
+				if (found && !g_off.guard && g_sheet && g_sheetMaterial && !g_sheetPath.empty()) { MapGuard::Bind(g_sheet, g_sheetMaterial, g_sheetPath); }
 				mapstate::g.night = night;
 				mapstate::g.sheets = found;
 				logger::info("Hour {} night {} sheets {} frame {} sheet z {} camera z {}", hour, night, found, g.frame, g_sheetZ, camZ);
@@ -761,7 +777,10 @@ namespace
 				g_stickX = g_stickY = 0.0f;
 				mapstate::g.open = false;
 				Tiles::Close();
+				MapGuard::Close();
 				g_sheet = nullptr;
+				g_sheetMaterial = nullptr;
+				g_sheetPath.clear();
 				if (g.frustumFallback)
 				{
 					// The game only rebuilds the view when the value differs from its last one.
