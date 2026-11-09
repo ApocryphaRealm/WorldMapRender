@@ -11,6 +11,7 @@ Written as changes happen, not reconstructed afterwards (rule 61). Each version 
 ## 1.0.0 - 2026-11-04 - untested
 
 ### Added
+- Once a second while the map is open, a diagnosis line in the log: the sky's fog and weather image space, the view, and for the sheet and every node above it whether it is hidden, its flags, fade, bound and alpha; table switches fogclear and forceshow (always drawn, no fade, full alpha up the sheet's chain, put back on close) to test fog and culling live
 - Map guard log lines: the size, format and mip count the game's own copy of the picture really has on the graphics card, our copy's, the device, and each bind
 - Structures and rock drawn from full models on every land but Skyrim and Sovngarde, roads and paths from the land's paint, lantern specks at night, building outlines
 - tools/rerun.py redraws the maps when the list's landscape changes

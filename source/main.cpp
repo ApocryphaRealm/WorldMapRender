@@ -82,6 +82,7 @@ namespace
 	struct Off
 	{
 		bool swap = false, clamp = false, ownMap = false, stick = false, look = false, fov = false, tiles = false, frame = false, lift = false, close = false, guard = false;
+		bool fogClear = false, forceShow = false;  // test switches that turn a part ON: "! fogclear forceshow" (blank-map diagnosis, 2026-11-09)
 	} g_off;
 
 	// A copy in the log folder wins over the installed one and is read every time the map opens: changes need no restart.
@@ -124,6 +125,8 @@ namespace
 					else if (word == "nolift") { g_off.lift = true; }
 					else if (word == "noclosehold") { g_off.close = true; }
 					else if (word == "noguard") { g_off.guard = true; }
+					else if (word == "fogclear") { g_off.fogClear = true; }
+					else if (word == "forceshow") { g_off.forceShow = true; }
 				}
 				logger::info("Test switches: {}", line);
 				continue;
@@ -430,6 +433,87 @@ namespace
 		}
 	}
 
+	// Blank-map diagnosis (2026-11-09 17:40: the guard bound the real picture and the map was still blank, so the picture is loaded and
+	// the sheet is either not drawn or not visible). Once a second while the map is open: the sky's fog and weather image space, the view,
+	// and for the sheet and every node above it: hidden, flags, fade, bound, alpha. Switch "forceshow" sets AlwaysDraw and IgnoreFade
+	// up the chain and full fade and alpha on the sheet (put back on close); "fogclear" pushes the sky's fog away on every land.
+	std::vector<std::pair<RE::NiPointer<RE::NiAVObject>, std::uint32_t>> g_forced;
+
+	float& Fade(RE::NiAVObject* a_o) { return *reinterpret_cast<float*>(reinterpret_cast<std::byte*>(a_o) + 0x100); }  // SE 1.5.97 layout
+
+	void ForceShow()
+	{
+		for (RE::NiAVObject* p = g_sheet; p; p = p->parent)
+		{
+			auto& f = p->GetFlags();
+			const auto want = f.underlying() | static_cast<std::uint32_t>(RE::NiAVObject::Flag::kAlwaysDraw) | static_cast<std::uint32_t>(RE::NiAVObject::Flag::kIgnoreFade);
+			if (p->GetAppCulled()) { p->SetAppCulled(false); }
+			if (f.underlying() != want)
+			{
+				g_forced.emplace_back(RE::NiPointer<RE::NiAVObject>(p), f.underlying());
+				f = static_cast<RE::NiAVObject::Flag>(want);
+			}
+			Fade(p) = 1.0f;
+		}
+		if (auto geometry = g_sheet ? g_sheet->AsGeometry() : nullptr)
+		{
+			if (auto effect = netimmerse_cast<RE::BSEffectShaderProperty*>(geometry->GetGeometryRuntimeData().properties[RE::BSGeometry::States::kEffect].get()))
+			{
+				effect->alpha = 1.0f;
+				if (auto material = static_cast<RE::BSEffectShaderMaterial*>(effect->GetBaseMaterial())) { material->baseColor.alpha = 1.0f; }
+			}
+		}
+	}
+
+	void UnforceShow()
+	{
+		for (auto& [node, flags] : g_forced)
+		{
+			if (node) { node->GetFlags() = static_cast<RE::NiAVObject::Flag>(flags); }
+		}
+		g_forced.clear();
+	}
+
+	void Diagnose(RE::NiCamera* a_camera, int a_frame)
+	{
+		std::string out = std::format("Diag frame {}:", a_frame);
+		if (auto sky = RE::Sky::GetSingleton())
+		{
+			out += std::format(" sky mode {} fog {} {} power {} clamp {} weather {:X} imod {:X} {:X};", static_cast<std::uint32_t>(sky->mode.get()), sky->fogNear, sky->fogFar,
+				sky->fogPower, sky->fogClamp, sky->currentWeather ? sky->currentWeather->GetFormID() : 0,
+				sky->currentWeatherImageSpaceMod && sky->currentWeatherImageSpaceMod->imod ? sky->currentWeatherImageSpaceMod->imod->GetFormID() : 0,
+				sky->currentWeatherImageSpaceMod2 && sky->currentWeatherImageSpaceMod2->imod ? sky->currentWeatherImageSpaceMod2->imod->GetFormID() : 0);
+		}
+		if (a_camera)
+		{
+			const auto& fr = a_camera->GetRuntimeData2().viewFrustum;
+			out += std::format(" view near {} far {} right {} at {:.0f} {:.0f} {:.0f};", fr.fNear, fr.fFar, fr.fRight, a_camera->world.translate.x, a_camera->world.translate.y,
+				a_camera->world.translate.z);
+		}
+		if (!g_sheet)
+		{
+			logger::info("{} no sheet", out);
+			return;
+		}
+		if (auto geometry = g_sheet->AsGeometry())
+		{
+			if (auto effect = netimmerse_cast<RE::BSEffectShaderProperty*>(geometry->GetGeometryRuntimeData().properties[RE::BSGeometry::States::kEffect].get()))
+			{
+				auto material = static_cast<RE::BSEffectShaderMaterial*>(effect->GetBaseMaterial());
+				auto source = material ? material->sourceTexture.get() : nullptr;
+				out += std::format(" sheet alpha {} colour {:.2f} {:.2f} {:.2f} {:.2f} effect flags {:X} view {};", effect->alpha, material ? material->baseColor.red : -1.0f,
+					material ? material->baseColor.green : -1.0f, material ? material->baseColor.blue : -1.0f, material ? material->baseColor.alpha : -1.0f,
+					static_cast<std::uint64_t>(effect->flags.underlying()), source && source->rendererTexture && source->rendererTexture->resourceView ? "yes" : "NONE");
+			}
+		}
+		for (RE::NiAVObject* p = g_sheet; p; p = p->parent)
+		{
+			out += std::format(" | {} hid {} flags {:X} fade {:.2f} bound {:.0f} {:.0f} {:.0f} r {:.0f}", p->name.c_str() ? p->name.c_str() : "?", p->GetAppCulled() ? 1 : 0,
+				p->GetFlags().underlying(), Fade(p), p->worldBound.center.x, p->worldBound.center.y, p->worldBound.center.z, p->worldBound.radius);
+		}
+		logger::info("{}", out);
+	}
+
 	// The owner's ask: straight down, no angle moves. Zero while any of our maps is showing; only the map reads these.
 	void HoldLook()
 	{
@@ -689,6 +773,9 @@ namespace
 		if (g.sheetsDone && !g_off.guard && g.frame < 600) { MapGuard::Frame(g.frame); }
 
 		if (g.frame == 90) { DescribeView(camera); }
+		if (g_off.fogClear) { ClearFog(); }
+		if (g_off.forceShow && g_sheet) { ForceShow(); }
+		if (g.frame % 60 == 30) { Diagnose(camera, g.frame); }
 
 		// the other land's chunk can arrive a little after the map opens
 		if (g.frame % 30 == 1 && g.frame < 1800)
@@ -778,6 +865,7 @@ namespace
 				mapstate::g.open = false;
 				Tiles::Close();
 				MapGuard::Close();
+				UnforceShow();
 				g_sheet = nullptr;
 				g_sheetMaterial = nullptr;
 				g_sheetPath.clear();
