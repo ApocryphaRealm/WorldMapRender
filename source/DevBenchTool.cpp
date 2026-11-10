@@ -18,8 +18,9 @@ namespace DevBenchTool
 			if (!a_write) { return; }
 			const auto& s = mapstate::g;
 			const std::string out = std::format(
-				"{{\"open\":{},\"ours\":{},\"world\":\"{}\",\"camera\":[{},{}],\"distance\":{},\"viewWidth\":{},\"fov\":{},\"pan\":{},\"sheetZ\":{},\"night\":{},\"sheets\":{},\"tilesShowing\":{},\"tilesHeld\":{}}}",
-				s.open, s.ours, s.world, s.cameraX, s.cameraY, s.distance, s.width, s.fov, s.pan, s.sheetZ, s.night, s.sheets, s.tilesShowing, s.tilesHeld);
+				"{{\"open\":{},\"ours\":{},\"world\":\"{}\",\"camera\":[{},{}],\"distance\":{},\"viewWidth\":{},\"fov\":{},\"pan\":{},\"sheetZ\":{},\"night\":{},\"sheets\":{},\"tilesShowing\":{},\"tilesHeld\":{},\"weatherOff\":{},\"cloudBankHidden\":{},\"skyHidden\":{},\"weatherReshown\":{}}}",
+				s.open, s.ours, s.world, s.cameraX, s.cameraY, s.distance, s.width, s.fov, s.pan, s.sheetZ, s.night, s.sheets, s.tilesShowing, s.tilesHeld, s.weatherOff,
+				s.cloudBank, s.skyHidden, s.weatherReshown);
 			a_write(a_sink, out.c_str());
 		}
 	}
@@ -35,7 +36,7 @@ namespace DevBenchTool
 			return;
 		}
 		constexpr const char* descriptor =
-			"{\"description\":\"World Map Render: the map camera's live state: open, world, whether it is ours, camera, distance to the sheet, view width, field of view, pan speed, sheet height, night, sheets swapped.\","
+			"{\"description\":\"World Map Render: the map camera's live state: open, world, whether it is ours, camera, distance to the sheet, view width, field of view, pan speed, sheet height, night, sheets swapped, and the weather taken off the map: cloud bank shapes hidden, sky objects hidden, times re-hidden.\","
 			"\"inputSchema\":{\"type\":\"object\",\"properties\":{}},\"readOnly\":true}";
 		if (devBench->RegisterTool("wmr.state", descriptor, &StateTool, nullptr))
 		{

@@ -15,6 +15,7 @@
 #include "DevBenchTool.h"
 #include "MapGuard.h"
 #include "MapState.h"
+#include "MapWeather.h"
 #include "Tiles.h"
 
 #include "utils/AddressLibraryGuard.h"
@@ -83,6 +84,7 @@ namespace
 	{
 		bool swap = false, clamp = false, ownMap = false, stick = false, look = false, fov = false, tiles = false, frame = false, lift = false, close = false, guard = false;
 		bool fogClear = false, forceShow = false;  // test switches that turn a part ON: "! fogclear forceshow" (blank-map diagnosis, 2026-11-09)
+		bool weather = false;                      // "noweather": the map keeps its clouds, rain, fog and weather tint (MapWeather.h)
 	} g_off;
 
 	// A copy in the log folder wins over the installed one and is read every time the map opens: changes need no restart.
@@ -127,6 +129,7 @@ namespace
 					else if (word == "noguard") { g_off.guard = true; }
 					else if (word == "fogclear") { g_off.fogClear = true; }
 					else if (word == "forceshow") { g_off.forceShow = true; }
+					else if (word == "noweather") { g_off.weather = true; }
 				}
 				logger::info("Test switches: {}", line);
 				continue;
@@ -160,7 +163,8 @@ namespace
 		if (a_log) { logger::info("Worlds in table: {}", g_worlds.size()); }
 	}
 
-	// The flat map's weather carries a 21% red tint, which turns snow pink. Other maps keep it.
+	// The flat map's weather carries a 21% red tint, which turns snow pink. Other maps keep it only when the weather is left on the map
+	// (table switch noweather): with the weather taken off, the tint goes on every map.
 	void SetMapTint(bool a_on)
 	{
 		static std::vector<std::pair<RE::TESImageSpace*, float>> saved;
@@ -561,8 +565,13 @@ namespace
 		if (g.open && !g.tintSet)
 		{
 			g.tintSet = true;
-			SetMapTint(world == nullptr);
+			SetMapTint(world == nullptr && g_off.weather);
 		}
+		if (g.open && !g_off.weather) { MapWeather::Frame(root); }
+		mapstate::g.weatherOff = g.open && !g_off.weather;
+		mapstate::g.cloudBank = MapWeather::Bank();
+		mapstate::g.skyHidden = MapWeather::SkyHidden();
+		mapstate::g.weatherReshown = MapWeather::Reshown();
 		mapstate::g.world = data.worldSpace ? data.worldSpace->editorID.c_str() : "";
 		mapstate::g.ours = world != nullptr;
 		if (!world || !root || !player || !g.open || g_off.frame) { return; }
@@ -837,6 +846,7 @@ namespace
 				mapstate::g.open = true;
 				LoadTable(false);
 				ApplyRecords(false);
+				MapWeather::Open();
 				g_raised.clear();
 				g_sheetZ = 0.0f;
 				g_sheet = nullptr;
@@ -865,6 +875,7 @@ namespace
 				mapstate::g.open = false;
 				Tiles::Close();
 				MapGuard::Close();
+				MapWeather::Close();
 				UnforceShow();
 				g_sheet = nullptr;
 				g_sheetMaterial = nullptr;

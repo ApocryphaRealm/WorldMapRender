@@ -14,6 +14,8 @@ namespace mapstate
 		bool        night = false;
 		int         sheets = 0;
 		int         tilesShowing = 0, tilesHeld = 0;
+		bool        weatherOff = false;
+		int         cloudBank = 0, skyHidden = 0, weatherReshown = 0;
 	};
 	inline Data g;
 }
