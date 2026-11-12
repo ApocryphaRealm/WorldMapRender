@@ -362,6 +362,7 @@ def main():
     ap.add_argument("--tiles-only", action="store_true", help="for the lands named, the tiles and mesh only: the sheet stays as it is")
     ap.add_argument("--tile-window", type=int, nargs=4, help="i0 j0 i1 j1: only these tiles, as a trial")
     ap.add_argument("--table-only", action="store_true", help="draw nothing: rewrite the table and marker list from worlds.json")
+    ap.add_argument("--no-snapshot", action="store_true", help="do not commit the finished build into the WorldMapRender-Textures repo")
     args = ap.parse_args()
     cfg = {k: v for k, v in json.load(open(os.path.join(HERE, "worlds.json"), encoding="utf-8")).items() if not k.startswith("_")}
     names = args.world or list(cfg)
@@ -430,6 +431,22 @@ def main():
     with open(os.path.join(args.out, "SKSE", "Plugins", "WorldMapRenderTiles.txt"), "w", encoding="utf-8", newline="\r\n") as f:
         f.write("\n".join(places) + "\n")
     print("table lands:", len(lines) - 3, "tile lands:", len(places) - 1)
+    if not args.no_snapshot:
+        auto_snapshot(args.out, "build_maps.py %s" % " ".join(sys.argv[1:]))
+
+
+def auto_snapshot(out, what):
+    """Every finished run is committed whole into the local assets repo (2026-11-12: the good hand-smoothed set lived only
+    in a stage folder, and full installs of an older package reverted it twice). A failure here only warns."""
+    try:
+        import subprocess as sp, snapshot_textures
+        code = sp.run(["git", "-C", HERE, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+        dirty = " (uncommitted tool changes)" if sp.run(["git", "-C", HERE, "status", "--porcelain", "--", "."],
+                                                       capture_output=True, text=True).stdout.strip() else ""
+        snapshot_textures.snapshot(out, "Build snapshot: %s, %s\n\nSource: %s\nCode repo %s%s." % (
+            what, time.strftime("%Y-%m-%d %H:%M"), os.path.abspath(out), code, dirty))
+    except (Exception, SystemExit) as e:   # noqa: BLE001 - the build itself has finished; the snapshot must not undo it
+        print("WARNING: no snapshot in the assets repo:", e)
 
 
 if __name__ == "__main__":

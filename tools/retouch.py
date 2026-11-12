@@ -108,6 +108,8 @@ def main():
         im = Image.fromarray(img)
         im.reduce(max(1, max(im.size) // 2048)).save(os.path.join(data, "..", "preview", "%s-%s.png" % (low, tag)))
         print("retouched", name, img.shape)
+    if "--no-snapshot" not in sys.argv:
+        build_maps.auto_snapshot(data, "retouch.py %s" % edid)
 
 
 if __name__ == "__main__":
